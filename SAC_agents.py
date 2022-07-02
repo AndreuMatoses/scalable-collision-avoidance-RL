@@ -27,7 +27,7 @@ class TrainedAgent:
      '''
     def __init__(self, file_name = 'network-critics.pth', n_agents = "auto", discount = 0.99):
 
-        file_name = os.path.join("NN saved", file_name)
+        file_name = os.path.join("models", file_name)
         # Load critic
         try:
             criticsNN = torch.load(file_name)
@@ -196,7 +196,7 @@ class SACAgents:
         return Gts, Q_approxs
 
     def save(self,filename = "network"):
-        folder ="NN saved"
+        folder ="models"
         cirtic_name = filename + "-critics.pth"
         # actor_name = filename + "-actors_list.pth"
         torch.save(self.criticsNN, os.path.join(folder,cirtic_name))
