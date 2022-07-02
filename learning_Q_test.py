@@ -14,7 +14,7 @@ print(env)
 
 N_Episodes = 1000
 
-T = 5 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
+T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 discount_factor = 0.99
 alpha_critic = 10**-3
 M = 20 # Epochs, i.e steps of the SDG for the critic NN

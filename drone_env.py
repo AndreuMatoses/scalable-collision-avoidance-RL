@@ -1,19 +1,19 @@
 
-from distutils.log import error
-from os import stat
-import random
-from matplotlib import markers
-import numpy as np
-import matplotlib.pyplot as plt
-import time
-from IPython import display
 import math
+import random
+import time
+from distutils.log import error
+
+import matplotlib.pyplot as plt
+from matplotlib import markers, animation
+import numpy as np
+from IPython import display
 
 ### TO DO ############
 """
 - Verify that the z states work as intended
 - Proper null state for the z state
-- GitHub repo
+- Proper animation
 """
 ######################
 
@@ -63,24 +63,23 @@ class drones:
         self.deltas = deltas
         self.simplify_zstate = simplify_zstate
 
+        # Other geometry parameters
+        self.drone_radius = np.ones(n_agents)*0.1 # radius of each drone in m
+
         # State space dynamics. For now, all agents have same A,B
         self.A = np.eye(dim)
         self.B = np.eye(dim)*dt
 
         # Initialize agents and obstacles
         self.obstacles = self.create_obstacles(n_obstacles)
-        self.state= self.init_agents(n_agents)
         self.end_points = self.generate_formation(end_formation)
-
-        # Calculate localized states z (uing the reward funciton)
-        _, _, z_states = self.rewards(self.state, self.end_points, self.n_agents, self.d_safety, self.deltas)
-        self.z_states = z_states
+        self.state, self.z_states = self.init_agents(n_agents)
 
         # self.trajectory = []
         # self.trajectory.append(self.state.copy())
 
     def reset(self, renew_obstacles = True):
-        self.state = self.init_agents(self.n_agents)
+        self.state, self.z_states = self.init_agents(self.n_agents)
         if renew_obstacles == True:
            self.obstacles = self.create_obstacles(self.n_obstacles)
 
@@ -88,6 +87,7 @@ class drones:
     def __str__(self):
         print("Grid size: [x_lim, y_lim]\n",self.grid)
         print("State: [x, y, vx, vy, r]\n", self.state)
+        print(f"z_sattes for k_closest = {self.k_closest}: simplify? {self.simplify_zstate} \n", self.z_states)
         print("Obstacles [x, y, r]:\n",self.obstacles)
         return ""
 
@@ -117,12 +117,12 @@ class drones:
 
         for i in range(self.n_agents):
             xFi = formation[dim*i:(i+1)*dim,0]
-            li = self.state[i,2*dim]
+            li = self.drone_radius[i]
             d_i = np.infty
             for j in range(self.n_agents): 
                 if j != i:
                     xFj = formation[dim*j:(j+1)*dim,0]
-                    lj = self.state[j,2*dim]
+                    lj = self.drone_radius[j]
                     d_ij = np.linalg.norm(xFi-xFj) -li -lj
                     d_i = min([d_i,d_ij])
 
@@ -182,7 +182,10 @@ class drones:
         random_coord = np.array(random.sample(possible_coord, n_agents))
         state[:,0:dim] = random_coord
 
-        return state
+        # Calculate localized states z (uing the reward funciton)
+        _, _, z_states = self.rewards(state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+
+        return state, z_states
     
     def step(self,actions):
         """_summary_
@@ -273,11 +276,11 @@ class drones:
 
         for i in range(n_agents):
             xi = state[i,0:dim]
-            li = state[i,2*dim]
+            li = self.drone_radius[i]
             for j in range(n_agents):
                 if j != i:
                     xj = state[j,0:dim]
-                    lj = state[j,2*dim]
+                    lj = self.drone_radius[j]
 
                     # Calculate agents relative distance
                     d_ij[i,j] = min(np.linalg.norm(xi-xj) -li -lj, d_safety[i])

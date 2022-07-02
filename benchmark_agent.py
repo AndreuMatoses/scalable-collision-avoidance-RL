@@ -1,6 +1,5 @@
 
 from collections import deque, namedtuple
-from turtle import color
 import numpy as np
 import matplotlib.pyplot as plt
 import drone_env
@@ -13,9 +12,9 @@ env = drone_env.drones(n_agents=5, n_obstacles=0, grid=[5, 5], end_formation="O"
 print(env)
 # env.show()
 
-N_Episodes = 5
+N_Episodes = 1
 
-T = 5 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
+T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 
 ### 
 
@@ -101,7 +100,7 @@ for episode in EPISODES:
         plt.legend()
         plt.show()
 
-plot_rewards(total_reward_list,total_collisions_list, n_ep_running_average=5)
+# plot_rewards(total_reward_list,total_collisions_list, n_ep_running_average=5)
 
 plt.figure()
 for i in range(env.n_agents):

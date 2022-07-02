@@ -214,7 +214,7 @@ class CriticNN(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
         # NN sizes: define size of hidden layer
-        L1 = 400
+        L1 = 200
         L2 = 200
 
         # Create input layer with ReLU activation
