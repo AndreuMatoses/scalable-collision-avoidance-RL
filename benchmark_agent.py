@@ -10,11 +10,11 @@ from SAC_agents import SACAgents, ExperienceBuffers, TrainedAgent
 ### Set up parameters ###
 n_agents = 10
 deltas = np.ones(n_agents)*2
-env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
+env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=None ,simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 1
+N_Episodes = 5
 
 T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 
@@ -30,7 +30,7 @@ times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 
 
-agents = TrainedAgent(file_name="Q_test_1000eps-critics.pth", n_agents=env.n_agents)
+agents = TrainedAgent(file_name="Q_test-critics.pth", n_agents=env.n_agents)
 print("### Running Trained agent (no learning)")
 print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}")

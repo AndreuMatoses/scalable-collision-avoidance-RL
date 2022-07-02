@@ -17,7 +17,7 @@ N_Episodes = 1000
 T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 discount_factor = 0.99
 alpha_critic = 10**-3
-M = 20 # Epochs, i.e steps of the SDG for the critic NN
+M = 30 # Epochs, i.e steps of the SDG for the critic NN
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
 
@@ -29,7 +29,6 @@ total_reward_list = []
 Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
 
 times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
-EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 
 
 agents = SACAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic)
@@ -38,6 +37,7 @@ print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = 
 print(f"N of agents = {env.n_agents}")
 print(f"Discount = {discount_factor}, (lr for NN critical)  = {alpha_critic}, epochs M = {M}")
 
+EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 for episode in EPISODES:
 
     # reward_history = np.zeros([len(times), env.n_agents])
@@ -91,7 +91,7 @@ for episode in EPISODES:
 
     # Plot current trajectory
 
-    if episode >= N_Episodes-0:
+    if episode >= N_Episodes-2:
         env.plot(trajectory)
 
         plt.figure()

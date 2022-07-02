@@ -60,7 +60,6 @@ class drones:
         self.grid = grid
         self.goal = self.grid
         self.k_closest = k_closest
-        self.deltas = deltas
         self.simplify_zstate = simplify_zstate
 
         # Other geometry parameters
@@ -70,9 +69,18 @@ class drones:
         self.A = np.eye(dim)
         self.B = np.eye(dim)*dt
 
-        # Initialize agents and obstacles
+        # Initialize agents and obstacles, and check if delta is a correct value
         self.obstacles = self.create_obstacles(n_obstacles)
-        self.end_points = self.generate_formation(end_formation)
+        self.end_points, self.d_safety = self.generate_formation(end_formation)
+
+        if deltas is None:
+            # In case of no deltas, we assume Dleta = d_safety, i.e no simplification (maximum deltas allowed)
+            self.deltas = self.d_safety
+        else:
+            self.deltas = np.minimum(deltas, self.d_safety)
+            if not np.all(deltas <= self.d_safety):
+                print("Some deltas are greater than the final minimum distance between end positions. Using minimum distance between end positions for those cases instead.",f"deltas = {self.deltas}")
+
         self.state, self.z_states = self.init_agents(n_agents)
 
         # self.trajectory = []
@@ -115,7 +123,7 @@ class drones:
             error(str(end_formation) +" is Not a valid end formation identifier")
 
         # find maximum allowed d_safety (\hat{d}_i): di <= min(|| xFi -xFj || - li - lj) for all j!=i
-        d_safety = np.zeros([self.n_agents,1])
+        d_safety = np.zeros(self.n_agents)
 
         for i in range(self.n_agents):
             xFi = formation[dim*i:(i+1)*dim,0]
@@ -129,10 +137,9 @@ class drones:
                     d_i = min([d_i,d_ij])
 
             d_safety[i] = d_i
-        self.d_safety = np.floor(d_safety*100)/100
 
-        # formation: [xF1^T, xF2^T,...]^T. Column vector
-        return formation
+        # formation: [xF1^T, xF2^T,...]^T. Column vector, d_safety (distance to closest end position from agent's end position)
+        return formation, np.floor(d_safety*100)/100
 
     def create_obstacles(self,n_obstacles):
         self.n_obstacles = n_obstacles
@@ -245,9 +252,6 @@ class drones:
         to_goal_cost = q*np.power(np.linalg.norm(xF-xi,axis=1),2)
 
         # Collision cost
-        if deltas == None:
-            # In case of no deltas, we assume Dleta = d_safety, i.e no simplification
-            deltas = d_safety
 
         d_ij, log_d, N_delta, collisions = self.distance_data(state,deltas,d_safety)
 
@@ -320,7 +324,7 @@ class drones:
             Zi = np.zeros([k+1,2*dim+1])
             Zi[0,:] = state[i,:].copy()
             # print(Zi,xFi.flaten() ,xi)
-            Zi[0,0:dim] = xFi.flatten() - xi
+            Zi[0,0:dim] = -(xFi.flatten() - xi)
 
             for kth in range(1,k+1):
             # kth = 1,2,...k
@@ -328,7 +332,7 @@ class drones:
                 if kth <= in_range:
                     # There exist a kth neighbour inside Delta
                     j = sorted_agents[kth]
-                    xj = state[j,0:dim]
+                    xj = state[j,0:dim].copy()
                     zj = state[j,:].copy()
                     zj[0:dim] = xj-xi
                     # print(f"{kth}th closest agent is {j}, coord {xj}, rel coord {xj-xi}")
@@ -339,7 +343,7 @@ class drones:
                     # Hopping that the NN learns that agents outside delta do not contribute to Q
                     # Probably, the proper thing would be to project this next closest to the Delta boundary
                     j = sorted_agents[kth]
-                    xj = state[j,0:dim]
+                    xj = state[j,0:dim].copy()
                     zj = state[j,:].copy()
                     zj[0:dim] = xj-xi
 
