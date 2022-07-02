@@ -87,7 +87,9 @@ class drones:
     def __str__(self):
         print("Grid size: [x_lim, y_lim]\n",self.grid)
         print("State: [x, y, vx, vy, r]\n", self.state)
-        print(f"z_sattes for k_closest = {self.k_closest}: simplify? {self.simplify_zstate} \n", self.z_states)
+        # print(f"z_sattes for k_closest = {self.k_closest}: simplify? {self.simplify_zstate} \n", self.z_states)
+        print("safety distance for each agent:\n", self.d_safety)
+        print("Deltas disk radius for each agent: \n", self.deltas)
         print("Obstacles [x, y, r]:\n",self.obstacles)
         return ""
 

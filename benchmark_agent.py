@@ -8,7 +8,9 @@ from tqdm import tqdm, trange
 from SAC_agents import SACAgents, ExperienceBuffers, TrainedAgent
 
 ### Set up parameters ###
-env = drone_env.drones(n_agents=5, n_obstacles=0, grid=[5, 5], end_formation="O", simplify_zstate = True)
+n_agents = 10
+deltas = np.ones(n_agents)*2
+env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
