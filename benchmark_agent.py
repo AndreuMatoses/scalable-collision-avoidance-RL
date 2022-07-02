@@ -29,8 +29,7 @@ Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state'
 times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 
-
-agents = TrainedAgent(file_name="Q_test-critics.pth", n_agents=env.n_agents)
+agents = TrainedAgent(file_name="Q_test-critics_400x400_1000eps_20M.pth", n_agents=env.n_agents)
 print("### Running Trained agent (no learning)")
 print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}")
