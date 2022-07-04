@@ -335,6 +335,7 @@ class drones:
                     xj = state[j,0:dim].copy()
                     zj = state[j,:].copy()
                     zj[0:dim] = xj-xi
+                    # zj[0:dim] = xj-xFi.flatten()
                     # print(f"{kth}th closest agent is {j}, coord {xj}, rel coord {xj-xi}")
 
                 else: 

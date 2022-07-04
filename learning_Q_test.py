@@ -12,12 +12,12 @@ env = drone_env.drones(n_agents=10, n_obstacles=0, grid=[5, 5], end_formation="O
 print(env)
 # env.show()
 
-N_Episodes = 1000
+N_Episodes = 10
 
 T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 discount_factor = 0.99
 alpha_critic = 10**-3
-M = 20 # Epochs, i.e steps of the SDG for the critic NN
+M = 30 # Epochs, i.e steps of the SDG for the critic NN
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
 
@@ -91,7 +91,7 @@ for episode in EPISODES:
 
     # Plot current trajectory
 
-    if episode >= N_Episodes-2:
+    if episode >= N_Episodes-0:
         env.plot(trajectory)
 
         plt.figure()
@@ -102,6 +102,6 @@ for episode in EPISODES:
         plt.legend()
         plt.show()
 
-agents.save(filename="Q_test")
+agents.save(filename="Q-test")
 
 plot_rewards(total_reward_list,total_collisions_list, n_ep_running_average=5)
