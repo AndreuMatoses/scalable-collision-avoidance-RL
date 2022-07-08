@@ -8,7 +8,7 @@ from tqdm import tqdm, trange
 from SAC_agents import SACAgents, ExperienceBuffers, TrainedAgent
 
 ### Set up parameters ###
-n_agents = 10
+n_agents = 5
 deltas = np.ones(n_agents)*2
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=None ,simplify_zstate = True)
 print(env)
@@ -29,7 +29,7 @@ Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state'
 times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 
-agents = TrainedAgent(file_name="zj_from_xF_400x400_M30_E500-critics.pth", n_agents=env.n_agents)
+agents = TrainedAgent(file_name="Q_test-critics.pth", n_agents=env.n_agents)
 print("### Running Trained agent (no learning)")
 print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}")
@@ -70,7 +70,7 @@ for episode in EPISODES:
     total_collisions_list.append(total_episode_collisions)
 
     # Test Critic values
-    Q_simulated, Q_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
+    Q_simulated, Q_approx = agents.benchmark_cirtic(buffers, only_one_NN=True)
 
     critic_error = [np.mean(np.power(Q_simulated[i]-Q_approx[i],2)) for i in range(env.n_agents)]
 

@@ -8,11 +8,11 @@ from tqdm import tqdm, trange
 from SAC_agents import SACAgents, ExperienceBuffers
 
 ### Set up parameters ###
-env = drone_env.drones(n_agents=10, n_obstacles=0, grid=[5, 5], end_formation="O", simplify_zstate = True)
+env = drone_env.drones(n_agents=5, n_obstacles=0, grid=[5, 5], end_formation="O", simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 10
+N_Episodes = 500
 
 T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 discount_factor = 0.99
@@ -102,6 +102,6 @@ for episode in EPISODES:
         plt.legend()
         plt.show()
 
-agents.save(filename="Q-test")
+agents.save(filename="Q_test")
 
 plot_rewards(total_reward_list,total_collisions_list, n_ep_running_average=5)

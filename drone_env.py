@@ -11,9 +11,11 @@ from IPython import display
 
 ### TO DO ############
 """
-- Verify that the z states work as intended
-- Proper null state for the z state
+- Plot of the Q function field for a fixed kth satates (varying xi)
+- Check if the individual reward needs to be mult by 1/n to get proper Q_hat
 - Proper animation
+- [Done] Verify that the z states work as intended
+- [Done] Proper null state for the z state
 """
 ######################
 
@@ -343,10 +345,16 @@ class drones:
                     # I try for now to just add the next state in order, as if to just add the two closest even if outside the Delta range
                     # Hopping that the NN learns that agents outside delta do not contribute to Q
                     # Probably, the proper thing would be to project this next closest to the Delta boundary
+                    # j = sorted_agents[kth]
+                    # xj = state[j,0:dim].copy()
+                    # zj = state[j,:].copy()
+                    # zj[0:dim] = xj-xi
+
+                    # Create a "ghost" agent that is just behind agent, at a distance 1.1*Delta in the direction to the goal
                     j = sorted_agents[kth]
-                    xj = state[j,0:dim].copy()
+                    zi = Zi[0,0:dim]
                     zj = state[j,:].copy()
-                    zj[0:dim] = xj-xi
+                    zj[0:dim] = zi/np.linalg.norm(zi) * self.deltas[i]*1.1
 
                 Zi[kth,:] = zj
 
