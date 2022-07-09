@@ -98,23 +98,33 @@ class TrainedAgent:
 
 class SACAgents:
 
-    def __init__(self, n_agents, dim_local_state, dim_local_action, discount, epochs, learning_rate_critic = 10**(-3), discrete_action = False) -> None:
+    def __init__(self, n_agents, dim_local_state, dim_local_action, discount, epochs, learning_rate_critic = 10**(-3), learning_rate_actor = 10**(-3), policy_type = "normal") -> None:
         '''* dim_local_state is the total size of the localized vector that the input of the Q and pi approximations use, i.e (k+1)*dim'''
 
         self.n_agents = n_agents
         self.dim_local_state = dim_local_state
         self.dim_local_action = dim_local_action
-        self.discrete_action = discrete_action # If we use a simplified discretized actions space
+        self.policy_type = policy_type # What kind of policy (NN, stochastic normal dist, etc...)
         self.discount = discount
         self.epochs = epochs
+
+        # Define policy (actor)
+        self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
 
         # List of NN that estimate Q
         self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
         self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
 
-    def forward(self, state) -> np.ndarray:
-        ''' Function that calculates the actions to take from the state (control law) '''
-        pass
+    def forward(self, z_states) -> list:
+        ''' Function that calculates the actions to take from the z_states list (control law) 
+            actions: list of row vectors [u1^T, u2^T,...]'''
+
+        actions = deque()
+        for i in range(self.n_agents):
+            z_state = z_states[i].flatten()
+            actions.append(self.actors[i].sample_action(z_state))
+
+        return actions
 
     def train_cirtic(self, buffers: deque):
         epochs = self.epochs
@@ -244,6 +254,54 @@ class CriticNN(nn.Module):
         out = self.output_layer(l2)
 
         return out
+        
+class NormalPolicy:
+    """Policy that uses a multivatriable normal distribution.
+        The parameters are theta, which multiply the state to define the mean mu:
+        parameters: mu = theta * z
+        gradient: w.r.t theta
+        covariance matrix: Constant for now, not a parameter
+
+        CAREFUL: Changes the shape of z,a inputs to columns
+
+        NOTICE: individual values of p(a|z) can be greater than 1, as this is a density funct.  (pdf, continous)
+        the pdf of a singular point makes no sense, neeeds to be over a differential of a (i.e pdf is per unit lenght)
+    """
+    def __init__(self, input_size, output_size = 2) -> None:
+        self.dim = output_size
+        self.z_dim = input_size
+
+        self.parameters = np.zeros([self.dim,self.z_dim])
+        self.Sigma = np.eye(self.dim)*0.2
+
+    def p_of_a(self, z:np.ndarray, a:np.ndarray) -> np.ndarray:
+        ''' a needs to be a row vector (1D flat)
+            z needs to be a row vector (1D flat)
+        '''
+        z.shape = (np.size(z),1)
+        a.shape = (np.size(a),1)
+
+        first_term = 1/np.sqrt((2*np.pi)**self.dim * np.linalg.det(self.Sigma))
+        exp_term = np.exp(-1/2 * (a-self.parameters @ z).T @ np.linalg.inv(self.Sigma) @ (a-self.parameters @ z))
+
+        print(first_term,exp_term)
+        return first_term*exp_term[0][0]
+
+    def compute_grad(self, z:np.ndarray, a:np.ndarray):
+        ''' a needs to be a row vector (1D flat)
+            z needs to be a row vector (1D flat)
+        '''
+        # Make vectors proper shape (column, for math)
+        z.shape = (np.size(z),1)
+        a.shape = (np.size(a),1)
+
+        self.grad = np.linalg.inv(self.Sigma) @ (a- self.parameters @ z) @z.T
+
+        return self.grad
+    
+    def sample_action(self, z:np.ndarray):
+        z.shape = (np.size(z),1)
+        return np.random.multivariate_normal((self.parameters @ z).flatten(), self.Sigma)
         
 
 class ExperienceBuffers:

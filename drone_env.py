@@ -12,8 +12,10 @@ from IPython import display
 ### TO DO ############
 """
 - Plot of the Q function field for a fixed kth satates (varying xi)
-- Check if the individual reward needs to be mult by 1/n to get proper Q_hat
+- Check if the individual reward needs to be mult by 1/n to get proper Q_hat (i think yes?)
+  (to then calculate the approximated gradient without error)
 - Proper animation
+- Maybe clip the reward for near collision distances
 - [Done] Verify that the z states work as intended
 - [Done] Proper null state for the z state
 """

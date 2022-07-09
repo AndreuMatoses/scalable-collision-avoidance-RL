@@ -12,25 +12,40 @@ thetaValues = rand(size(theta));
 Sigma = sym('Sigma%d%d', [2 2],'real');
 SigmaValues = rand(size(Sigma));
 SigmaValues = SigmaValues.*SigmaValues';
+val = @(eqq) double(subs(eqq,[z(:)',theta(:)',a(:)',Sigma(:)'],[zValues(:)',thetaValues(:)',aValues(:)',SigmaValues(:)']));
 
-eqq1 = -1/2 * (a-theta*z)' * (Sigma) * (a-theta*z);
+d = 2;
+original = 1/((2*pi)^(d/2)*sqrt(det(Sigma)))*exp(-1/2*(a-theta*z)'*inv(Sigma)*(a-theta*z));
 
+eqq1 = -1/2 * (a-theta*z)' * inv(Sigma) * (a-theta*z);
+eqq2 =-1/2*z'*theta'*Sigma*theta*z + a'*Sigma*theta*z - 1/2*a'*Sigma*a;
+I = -1/2*z'*theta'*Sigma*theta*z;
+II = a'*Sigma*theta*z;
+
+for m=1:z_dim
+    dum = theta(:,m);
+    eval(['theta' num2str(m) ' = dum;']);
+end
+
+gra = @(scalar) arrayfun(@(s,v) val(diff(s,v)),scalar*ones(size(theta)),theta);
+
+%
 for d = 1:size(a)
     for m = 1:z_dim
        grad1(d,m) = diff(eqq1,theta(d,m)); 
+       grad2(d,m) = diff(eqq2,theta(d,m));
     end
 end
 
-% eqq2 =-1/2*z'*theta'*Sigma*theta*z + a'*Sigma*theta*z - 1/2*a'*Sigma*a;
-% 
-% grad2 = diff(eqq2,theta(1,1));
-
-val = @(eqq) double(subs(eqq,[z(:)',theta(:)',a(:)',Sigma(:)'],[zValues(:)',thetaValues(:)',aValues(:)',SigmaValues(:)']));
-
 [val(grad1), val(grad2)]
 
-for m=1:z_dim
-    IIgrad(:,m) = (a'*Sigma*z(m)) 
-end
+IIgrad = Sigma*a*z';
+Igrad = -Sigma*theta*z*z';
+
+gra(eqq1)
+val(Sigma*(a-theta*z)*z')
+
+
+
 
 

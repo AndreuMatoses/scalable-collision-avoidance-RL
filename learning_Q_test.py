@@ -12,9 +12,9 @@ env = drone_env.drones(n_agents=5, n_obstacles=0, grid=[5, 5], end_formation="O"
 print(env)
 # env.show()
 
-N_Episodes = 500
+N_Episodes = 2
 
-T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
+T = 5 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 discount_factor = 0.99
 alpha_critic = 10**-3
 M = 30 # Epochs, i.e steps of the SDG for the critic NN
@@ -54,8 +54,9 @@ for episode in EPISODES:
         z_states = env.z_states
 
         # calculate actions based on current state
-        actions = drone_env.gradient_control(state, env)
+        # actions = drone_env.gradient_control(state, env)
         # actions = drone_env.proportional_control(state, env)
+        actions = agents.forward(z_states)
 
         # Update environment one time step with the actions
         new_state, new_z, rewards, n_collisions, finished = env.step(actions)
@@ -91,7 +92,7 @@ for episode in EPISODES:
 
     # Plot current trajectory
 
-    if episode >= N_Episodes-0:
+    if episode >= N_Episodes-2:
         env.plot(trajectory)
 
         plt.figure()
