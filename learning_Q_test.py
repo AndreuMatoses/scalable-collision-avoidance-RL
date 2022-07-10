@@ -8,7 +8,9 @@ from tqdm import tqdm, trange
 from SAC_agents import SACAgents, ExperienceBuffers
 
 ### Set up parameters ###
-env = drone_env.drones(n_agents=5, n_obstacles=0, grid=[5, 5], end_formation="O", simplify_zstate = True)
+n_agents = 5
+deltas = np.ones(n_agents)*1.5
+env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
@@ -17,6 +19,7 @@ N_Episodes = 2
 T = 5 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 discount_factor = 0.99
 alpha_critic = 10**-3
+alpha_actor = 10**-2
 M = 30 # Epochs, i.e steps of the SDG for the critic NN
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
@@ -31,11 +34,12 @@ Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state'
 times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 
 
-agents = SACAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic)
+agents = SACAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
 print("### Running Scalable-Actor-Critic with params: ###")
 print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = {drone_env.dt}s)")
-print(f"N of agents = {env.n_agents}")
-print(f"Discount = {discount_factor}, (lr for NN critical)  = {alpha_critic}, epochs M = {M}")
+print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")
+print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr for actor  = {alpha_actor}, epochs M = {M}")
+
 
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 for episode in EPISODES:
@@ -52,16 +56,17 @@ for episode in EPISODES:
         # Simple gradient controller u_i = -grad_i, assuming Nj = V
         state = env.state
         z_states = env.z_states
+        Ni = env.Ni
 
         # calculate actions based on current state
-        # actions = drone_env.gradient_control(state, env)
+        actions = drone_env.gradient_control(state, env)
         # actions = drone_env.proportional_control(state, env)
-        actions = agents.forward(z_states)
+        # actions = agents.forward(z_states)
 
         # Update environment one time step with the actions
         new_state, new_z, rewards, n_collisions, finished = env.step(actions)
         # EXPERIECE: [z_state, action, reward, next_z, finished]
-        buffers.append(z_states, actions, rewards,new_z, finished)
+        buffers.append(z_states, actions, rewards,new_z, Ni, finished)
 
         total_episode_reward += np.mean(rewards)
         total_episode_collisions += n_collisions
@@ -75,7 +80,7 @@ for episode in EPISODES:
     total_collisions_list.append(total_episode_collisions)
 
     # Train of critic with the data of the episode
-    agents.train_cirtic(buffers)
+    agents.train(buffers)
     Q_simulated, Q_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
 
     # print(f"Episode collisions = {total_episode_collisions}")

@@ -48,6 +48,7 @@ for episode in EPISODES:
         # Simple gradient controller u_i = -grad_i, assuming Nj = V
         state = env.state
         z_states = env.z_states
+        Ni = env.Ni
 
         # calculate actions based on current state
         actions = drone_env.gradient_control(state, env)

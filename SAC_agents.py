@@ -25,7 +25,7 @@ class RandomAgent:
 class TrainedAgent:
     ''' Agent that loads and follows a learned policy/critic
      '''
-    def __init__(self, file_name = 'network-critics.pth', n_agents = "auto", discount = 0.99):
+    def __init__(self, file_name:str, n_agents = "auto", discount = 0.99):
 
         file_name = os.path.join("models", file_name)
         # Load critic
@@ -71,7 +71,7 @@ class TrainedAgent:
             
             # separate data from experience buffer
             buffer = buffers.buffers[i]
-            states, actions, rewards, new_states, finished = zip(*buffer)
+            states, actions, rewards, new_states, Ni, inished = zip(*buffer)
 
             # Create input tensor, This one: input = [s,a] tensor -> Q(s,a)
             inputs = np.column_stack((states,actions))
@@ -110,25 +110,27 @@ class SACAgents:
 
         # Define policy (actor)
         self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
+        self.learning_rate_actor = learning_rate_actor
 
         # List of NN that estimate Q
         self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
         self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
 
-    def forward(self, z_states) -> list:
+    def forward(self, z_states, Ni) -> list:
         ''' Function that calculates the actions to take from the z_states list (control law) 
             actions: list of row vectors [u1^T, u2^T,...]'''
 
         actions = deque()
         for i in range(self.n_agents):
             z_state = z_states[i].flatten()
-            actions.append(self.actors[i].sample_action(z_state))
+            actions.append(self.actors[i].sample_action(z_state, Ni))
 
         return actions
 
-    def train_cirtic(self, buffers: deque):
+    def train(self, buffers: deque):
         epochs = self.epochs
 
+        # CRITIC LOOP
         for i in range(self.n_agents):
             # NN for this agent:
             criticNN = self.criticsNN[i]
@@ -136,9 +138,9 @@ class SACAgents:
 
             # separate data from experience buffer
             buffer = buffers.buffers[i]
-            states, actions, rewards, new_states, finished = zip(*buffer)
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
 
-            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a)
+            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]
             inputs = np.column_stack((states,actions))
             inputs = torch.tensor(inputs, dtype=torch.float32)
 
@@ -166,7 +168,37 @@ class SACAgents:
                 nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
                 # Update
                 critic_optimizer.step()
+        
+        # ACTOR LOOP
+        for i in range(self.n_agents):
+            # to acces buffer data: buffers.buffers[i][t].action, namedtuple('experience', ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
+            
+            actor = self.actors[i]
+            gi = 0 #initialize to 0
 
+            for t in range(T):
+                zit = buffers.buffers[i][t].z_state
+                ait = buffers.buffers[i][t].action
+                Nit = buffers.buffers[i][t].Ni
+
+                grad_actor = actor.compute_grad(zit,ait, Nit)
+                grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
+
+                Qj_sum = 0
+                for j in Nit:
+                    zjt = buffers.buffers[j][t].z_state
+                    ajt = buffers.buffers[j][t].action
+                    Q_input_tensor =  torch.tensor(np.hstack((zjt,ajt)), dtype=torch.float32)
+                    Qj = self.criticsNN[j](Q_input_tensor).detach().numpy()
+                    Qj_sum += Qj[0]
+
+                gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
+
+            # Update policy parameters with approx gradient gi (clipped to avoid infinity gradients)
+            gi = actor.clip_grad_norm(gi, clip_norm=200)
+            actor.parameters += self.learning_rate_actor*gi
+            # print(f"grad norms gi={np.linalg.norm(gi.flatten())}")
+    
     def benchmark_cirtic(self, buffers: deque, only_one_NN = False):
 
         Gts = deque() # for debug, delete after
@@ -180,11 +212,12 @@ class SACAgents:
             
             # separate data from experience buffer
             buffer = buffers.buffers[i]
-            states, actions, rewards, new_states, finished = zip(*buffer)
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
 
             # Create input tensor, This one: input = [s,a] tensor -> Q(s,a)
             inputs = np.column_stack((states,actions))
             inputs = torch.tensor(inputs, dtype=torch.float32)
+            ## Actor update
 
             # Calculate the simulated Q value (target), Monte carlo Gt
             # Going backwards, G(t) = gamma * G(t+1) + r(t), with G(T)=r(T)
@@ -208,35 +241,37 @@ class SACAgents:
     def save(self,filename = "network"):
         folder ="models"
         cirtic_name = filename + "-critics.pth"
-        # actor_name = filename + "-actors_list.pth"
+        actors_name = filename + "-actors.pth"
+
         torch.save(self.criticsNN, os.path.join(folder,cirtic_name))
-        print(f'Saved Critic NN as {cirtic_name}')
-        # torch.save(self.actorNN, actor_name)
-        # print(f'Saved Actor NN as {actor_name}')
+        print(f'Saved Critic NNs as {cirtic_name}')
+        torch.save(self.actors, os.path.join(folder,actors_name))
+        print(f'Saved Actors List as {actors_name}')
 
 
 class CriticNN(nn.Module):
     """ Create local critic network
     """
+    # NN sizes: define size of hidden layer
+    L1 = 200
+    L2 = 200
+
     def __init__(self, input_size, output_size = 1):
         super().__init__()
 
         self.input_size = input_size
         self.output_size = output_size
-        # NN sizes: define size of hidden layer
-        L1 = 200
-        L2 = 200
 
         # Create input layer with ReLU activation
-        self.input_layer = nn.Linear(input_size, L1)
+        self.input_layer = nn.Linear(input_size, self.L1)
         self.input_layer_activation = nn.ReLU()
 
         # Create hidden layers. 1
-        self.hidden_layer1 = nn.Linear(L1, L2)
+        self.hidden_layer1 = nn.Linear(self.L1, self.L2)
         self.hidden_layer1_activation = nn.ReLU()
 
         # Create output layer. NO ACTIVATION
-        self.output_layer = nn.Linear(L2, output_size)
+        self.output_layer = nn.Linear(self.L2, output_size)
 
     def forward(self, z):
         '''z must be a properly formated vector of z (torch tensor)'''
@@ -271,7 +306,12 @@ class NormalPolicy:
         self.dim = output_size
         self.z_dim = input_size
 
-        self.parameters = np.zeros([self.dim,self.z_dim])
+        param =np.zeros([self.dim,self.z_dim])
+
+        for i in range(int(self.z_dim/self.dim)):
+            param[:,i*self.dim:(i+1)*self.dim] = -np.eye(self.dim)
+
+        self.parameters = param
         self.Sigma = np.eye(self.dim)*0.2
 
     def p_of_a(self, z:np.ndarray, a:np.ndarray) -> np.ndarray:
@@ -284,43 +324,75 @@ class NormalPolicy:
         first_term = 1/np.sqrt((2*np.pi)**self.dim * np.linalg.det(self.Sigma))
         exp_term = np.exp(-1/2 * (a-self.parameters @ z).T @ np.linalg.inv(self.Sigma) @ (a-self.parameters @ z))
 
-        print(first_term,exp_term)
+        z.shape = (np.size(z),)
+        a.shape = (np.size(a),)
+
         return first_term*exp_term[0][0]
 
-    def compute_grad(self, z:np.ndarray, a:np.ndarray):
+    def compute_grad(self, z:np.ndarray, a:np.ndarray, Ni):
         ''' a needs to be a row vector (1D flat)
             z needs to be a row vector (1D flat)
+            Ni indicates the states that are neighbors
         '''
         # Make vectors proper shape (column, for math)
         z.shape = (np.size(z),1)
         a.shape = (np.size(a),1)
 
-        self.grad = np.linalg.inv(self.Sigma) @ (a- self.parameters @ z) @z.T
+        # Used to only calculate the gradient of the states that actually count
+        valid_idx = len(Ni)*self.dim
+
+        self.grad = np.zeros([self.dim,self.z_dim])
+
+        self.grad[:,0:valid_idx] = np.linalg.inv(self.Sigma) @ (a- self.parameters[:,0:valid_idx] @ z[0:valid_idx,:]) @ z[0:valid_idx,:].T
+
+        z.shape = (np.size(z),)
+        a.shape = (np.size(a),)
 
         return self.grad
     
-    def sample_action(self, z:np.ndarray):
+    def clip_grad_norm(self, grad:np.ndarray, clip_norm:float):
+        # If the gradient norm is to be cliped to a value:
+        grad_norm = np.linalg.norm(grad.flatten())
+        # If the current norm is less than the clipping, do nothing. If more, make the norm=cliped_norm
+        if grad_norm <= clip_norm:
+            return grad
+        else:
+            return grad * clip_norm/grad_norm
+
+
+    def sample_action(self, z:np.ndarray, Ni):
+        # Maybe add a mask so that null states are not accounted 
         z.shape = (np.size(z),1)
-        return np.random.multivariate_normal((self.parameters @ z).flatten(), self.Sigma)
+
+        # Used to only calculate the gradient of the states that actually count
+        valid_idx = len(Ni)*self.dim
+
+        mu = (self.parameters[:,0:valid_idx] @ z[0:valid_idx,:]).flatten()
+        
+        z.shape = (np.size(z),)
+        a = np.random.multivariate_normal(mu, self.Sigma)
+        
+        # Clip the action to not have infinite action
+        return np.clip(a,-1,+1)
         
 
 class ExperienceBuffers:
     """ List of buffers for each agent.
         each agent has its own buffer: i: ['z_state', 'action', 'local_reward', 'next_z', 'is_finished']
-        to get data, example: buffers.buffers[0][5].action
+        to get data, example: buffers.buffers[i][t].action
     """
     def __init__(self, n_agents):
         # Create buffer for each agent
         self.buffers = [deque() for i in range(n_agents)]
         self.n_agents = n_agents
         self.experience = namedtuple('experience',
-                            ['z_state', 'action', 'reward', 'next_z', 'finished'])
+                            ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
 
-    def append(self,z_states, actions, rewards, new_z, finished):
+    def append(self,z_states, actions, rewards, new_z, Ni, finished):
         # Append experience to the buffer
         for i in range(self.n_agents):
             # Create localized expereince touple. Also, flatten state and action vectors
-            exp = self.experience(z_states[i].flatten(), actions[i].flatten(), rewards[i], new_z[i].flatten(), finished)
+            exp = self.experience(z_states[i].flatten(), actions[i].flatten(), rewards[i], new_z[i].flatten(), Ni[i], finished)
             self.buffers[i].append(exp)
 
     def __len__(self):

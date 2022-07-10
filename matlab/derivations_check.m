@@ -2,13 +2,14 @@ clear all;
 
 rng(1)
 
-z_dim = 3;
+z_dim = 6;
 z = sym('z%d%d', [z_dim 1],'real');
 zValues = rand(size(z))*5;
 a = sym('a%d%d', [2 1],'real');
 aValues = rand(size(a));
 theta = sym('theta%d%d', [2 z_dim],'real');
 thetaValues = rand(size(theta));
+thetaValues(:,5:6)=0;
 Sigma = sym('Sigma%d%d', [2 2],'real');
 SigmaValues = rand(size(Sigma));
 SigmaValues = SigmaValues.*SigmaValues' + eye(size(Sigma))*0.5;

@@ -12,7 +12,7 @@ from IPython import display
 ### TO DO ############
 """
 - Plot of the Q function field for a fixed kth satates (varying xi)
-- Check if the individual reward needs to be mult by 1/n to get proper Q_hat (i think yes?)
+- [No need, 1/n already in approx gradient formula] Check if the individual reward needs to be mult by 1/n to get proper Q_hat (i think yes?)
   (to then calculate the approximated gradient without error)
 - Proper animation
 - Maybe clip the reward for near collision distances
@@ -196,7 +196,9 @@ class drones:
         state[:,0:dim] = random_coord
 
         # Calculate localized states z (uing the reward funciton)
-        _, _, z_states = self.rewards(state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+        _, _, z_states, Ni = self.rewards(state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+        # Update the Ni graph
+        self.Ni = Ni
 
         return state, z_states
     
@@ -228,8 +230,10 @@ class drones:
 
 
         # Calculate new individual reward [r1(s,a), r2,...] vector, plus related distance dependent values
-        r_vec, n_collisions, z_states = self.rewards(self.state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+        r_vec, n_collisions, z_states, Ni = self.rewards(self.state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+        # Update the z and Ni graph
         self.z_states = z_states
+        self.Ni = Ni
 
         # SHould return (s', r(s,a), n_collisions(s') ,finished)
         finished = False
@@ -266,9 +270,9 @@ class drones:
         reward_vector = -(to_goal_cost+collision_cost)
 
         # Calculate localized z states
-        z_states = self.localized_states(state, end_points, N_delta, d_ij)
+        z_states, Ni = self.localized_states(state, end_points, N_delta, d_ij)
 
-        return reward_vector, n_collisions, z_states
+        return reward_vector, n_collisions, z_states, Ni
 
     def distance_data(self,state,deltas,d_safety):
         '''Return matrix of clipped distances matrix d[ij]
@@ -294,6 +298,8 @@ class drones:
 
                     # Calculate agents relative distance
                     d_ij[i,j] = min(np.linalg.norm(xi-xj) -li -lj, d_safety[i])
+                    if d_ij[i,j] == 0: # Handle unlikely case of exactly 0, if not then the coming division would be error
+                        d_ij[i,j] = -10**-6
                     d_ij_norm[i,j] = d_safety[i]/d_ij[i,j]
                 else:
                     d_ij[i,j] = min(-li -li, d_safety[i])
@@ -303,9 +309,9 @@ class drones:
         collisions = d_ij_norm <= 0
         N_delta = d_ij <= deltas
         # Handling negative logarithms (only for d normalized, to use in logarithms)
-        d_ij_norm[collisions] = 9.99E16
+        d_ij_norm[collisions] = 9.99E3
         log_d = np.log(d_ij_norm)
-        log_d[collisions] = 9.99E16
+        log_d[collisions] = 9.99E3
 
         return d_ij, log_d, N_delta, collisions
 
@@ -315,11 +321,13 @@ class drones:
         k = self.k_closest
 
         z = []
+        Ni_list = []
 
         for i in range(n_agents):
             # How many agents are in Delta range, minus itself
             in_range = np.sum(N_delta[i,:])-1
             sorted_agents = sorted_idx[i,:]
+            Ni = [i]
 
             xi = state[i,0:dim]
             xFi = end_points[i*dim:(i+1)*dim]
@@ -336,6 +344,7 @@ class drones:
                 if kth <= in_range:
                     # There exist a kth neighbour inside Delta
                     j = sorted_agents[kth]
+                    Ni.append(j)
                     xj = state[j,0:dim].copy()
                     zj = state[j,:].copy()
                     zj[0:dim] = xj-xi
@@ -359,15 +368,19 @@ class drones:
                     zj[0:dim] = zi/np.linalg.norm(zi) * self.deltas[i]*1.1
 
                 Zi[kth,:] = zj
-
+            
             if self.simplify_zstate:
                 # Remove parts of the satte that overcomplicate:
                 # No (vx,vy,l)
                 z.append(Zi[:,0:dim])
             else:
                 z.append(Zi)
+            
+            Ni_list.append(Ni)
+
         # z is a list of arrays. Each array is the localized Delta state for each agent
-        return z
+        # Add: Ni_list = list of neighbours for each agent
+        return z, Ni_list
 
     # %% Plotting methods 
     def show(self, state = None, not_animate = True):
