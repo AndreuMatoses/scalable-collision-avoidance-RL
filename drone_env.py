@@ -11,20 +11,20 @@ from IPython import display
 
 ### TO DO ############
 """
+- TrainedAgnet for the actor loading
+- check what happens to gradients
+- Add proper "finished in step()
+- 
 - Plot of the Q function field for a fixed kth satates (varying xi)
-- [No need, 1/n already in approx gradient formula] Check if the individual reward needs to be mult by 1/n to get proper Q_hat (i think yes?)
-  (to then calculate the approximated gradient without error)
 - Proper animation
 - Maybe clip the reward for near collision distances
-- [Done] Verify that the z states work as intended
-- [Done] Proper null state for the z state
 """
 ######################
 
 # Spatial dimension
 dim = 2 
 # time step in seconds
-dt = 0.01 
+dt = 0.05
 # Some colours
 LIGHT_RED    = '#FFC4CC';
 LIGHT_GREEN  = '#95FD99';
@@ -192,6 +192,7 @@ class drones:
                 coord = [idx*delta_l, jdx*delta_l]
                 possible_coord.append(coord)
 
+        random.seed(1)
         random_coord = np.array(random.sample(possible_coord, n_agents))
         state[:,0:dim] = random_coord
 
@@ -249,9 +250,9 @@ class drones:
         '''
         n_agents = np.size(state,0)
 
-        # weights: q|xi-xF|^2 + b log(d_i/d_ij)
-        q = 1 
-        b = 1
+        # weights: q|xi-xF|^2 + b log(d_i/d_ij). I multiply per dt as i assume is cost/time
+        q = 1*dt
+        b = 1*dt
 
         xF = np.reshape(end_points,[n_agents,dim])
         xi = state[:,0:dim]
@@ -264,6 +265,7 @@ class drones:
         d_ij, log_d, N_delta, collisions = self.distance_data(state,deltas,d_safety)
 
         collision_cost = b*np.sum(log_d*N_delta,1)
+        real_collision_cost = b*np.sum(log_d,1)
         n_collisions = np.sum(collisions)
 
         # These are the approximated localized rewards
@@ -598,7 +600,30 @@ def plot_rewards(episode_reward_list, collision_list, n_ep_running_average=50):
     ax[1].grid(alpha=0.3)
     plt.show()
  
+def plot_grads(grad_per_episode:np.ndarray, gi_per_episode:np.ndarray):
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 9))
 
+    n_agents = np.size(grad_per_episode,1)
+    episode_variable = [e for e in range(1, len(grad_per_episode)+1)]
+
+    for i in range(n_agents):
+        agent_color = num_to_rgb(i,n_agents-1)
+        ax[0].plot(episode_variable, grad_per_episode[:,i], label=f"Agent {i+1}", color = agent_color)
+    ax[0].set_xlabel('Episodes')
+    ax[0].set_ylabel('Score function gradient')
+    # ax[0].set_title('Total Reward vs Episodes')
+    ax[0].legend()
+    ax[0].grid(alpha=0.3)
+
+    for i in range(n_agents):
+        agent_color = num_to_rgb(i,n_agents-1)
+        ax[1].plot(episode_variable, gi_per_episode[:,i], label=f"Agent {i+1}", color = agent_color)
+    ax[1].set_xlabel('Episodes')
+    ax[1].set_ylabel('Approximated gi gradient (max norm = 100)')
+    # ax[1].set_title('Total number of collisions vs Episodes')
+    ax[1].legend()
+    ax[1].grid(alpha=0.3)
+    plt.show()
         
 
 

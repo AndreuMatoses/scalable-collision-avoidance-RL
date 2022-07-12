@@ -127,8 +127,11 @@ class SACAgents:
 
         return actions
 
-    def train(self, buffers: deque):
+    def train(self, buffers: deque, actor_lr = None, return_grads = False):
         epochs = self.epochs
+
+        if actor_lr is not None:
+            self.learning_rate_actor = actor_lr
 
         # CRITIC LOOP
         for i in range(self.n_agents):
@@ -170,6 +173,8 @@ class SACAgents:
                 critic_optimizer.step()
         
         # ACTOR LOOP
+        grad_norms = []
+        gi_norms = []
         for i in range(self.n_agents):
             # to acces buffer data: buffers.buffers[i][t].action, namedtuple('experience', ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
             
@@ -182,10 +187,10 @@ class SACAgents:
                 Nit = buffers.buffers[i][t].Ni
 
                 grad_actor = actor.compute_grad(zit,ait, Nit)
-                grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
+                # grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
 
                 Qj_sum = 0
-                for j in Nit:
+                for j in Nit: # REMOVE THE [0]
                     zjt = buffers.buffers[j][t].z_state
                     ajt = buffers.buffers[j][t].action
                     Q_input_tensor =  torch.tensor(np.hstack((zjt,ajt)), dtype=torch.float32)
@@ -195,9 +200,15 @@ class SACAgents:
                 gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
 
             # Update policy parameters with approx gradient gi (clipped to avoid infinity gradients)
-            gi = actor.clip_grad_norm(gi, clip_norm=200)
+            # gi = actor.clip_grad_norm(gi, clip_norm=200)
             actor.parameters += self.learning_rate_actor*gi
             # print(f"grad norms gi={np.linalg.norm(gi.flatten())}")
+            if return_grads:
+                grad_norms.append(np.linalg.norm(grad_actor.flatten()))
+                gi_norms.append(np.linalg.norm(gi.flatten()))
+
+        if return_grads:        
+            return grad_norms, gi_norms
     
     def benchmark_cirtic(self, buffers: deque, only_one_NN = False):
 
