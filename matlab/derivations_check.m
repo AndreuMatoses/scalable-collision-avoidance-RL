@@ -4,15 +4,17 @@ rng(1)
 
 z_dim = 6;
 z = sym('z%d%d', [z_dim 1],'real');
-zValues = rand(size(z))*5;
+% zValues = rand(size(z))*5;
+zValues = [1,2,3,4,5,6]';
 a = sym('a%d%d', [2 1],'real');
-aValues = rand(size(a));
+% aValues = rand(size(a));
+aValues = [0.5,1]';
 theta = sym('theta%d%d', [2 z_dim],'real');
-thetaValues = rand(size(theta));
-thetaValues(:,5:6)=0;
+% thetaValues = rand(size(theta));
+% thetaValues(:,5:6)=0;
+thetaValues = [1,0.5,1,0.5,1,0.5;2,0.6,2,0.6,2,0.6];
 Sigma = sym('Sigma%d%d', [2 2],'real');
-SigmaValues = rand(size(Sigma));
-SigmaValues = SigmaValues.*SigmaValues' + eye(size(Sigma))*0.5;
+SigmaValues = [1,0.01;0.01,1.5];
 val = @(eqq) double(subs(eqq,[z(:)',theta(:)',a(:)',Sigma(:)'],[zValues(:)',thetaValues(:)',aValues(:)',SigmaValues(:)']));
 
 d = 2;

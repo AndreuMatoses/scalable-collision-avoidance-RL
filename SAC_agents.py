@@ -2,6 +2,8 @@
 from enum import auto
 import os
 import numpy as np
+from autograd import numpy as anp
+from autograd import grad
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -176,7 +178,7 @@ class SACAgents:
         grad_norms = []
         gi_norms = []
         for i in range(self.n_agents):
-            # to acces buffer data: buffers.buffers[i][t].action, namedtuple('experience', ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
+            # to access buffer data: buffers.buffers[i][t].action, namedtuple('experience', ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
             
             actor = self.actors[i]
             gi = 0 #initialize to 0
@@ -185,8 +187,9 @@ class SACAgents:
                 zit = buffers.buffers[i][t].z_state
                 ait = buffers.buffers[i][t].action
                 Nit = buffers.buffers[i][t].Ni
-
-                grad_actor = actor.compute_grad(zit,ait, Nit)
+                
+                grad_actor = actor.compute_grad(zit,ait, [1,2,3])
+                # PUT Ni HERE INSTEAD of [1,2,3]
                 # grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
 
                 Qj_sum = 0
@@ -200,8 +203,11 @@ class SACAgents:
                 gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
 
             # Update policy parameters with approx gradient gi (clipped to avoid infinity gradients)
-            # gi = actor.clip_grad_norm(gi, clip_norm=200)
-            actor.parameters += self.learning_rate_actor*gi
+            gi = actor.clip_grad_norm(gi, clip_norm=50)
+            # MAKE SURE TO CLIP THE PARAMS from 0 to 2*Pi
+            actor.parameters =  actor.parameters + self.learning_rate_actor*gi
+            # actor.parameters =  np.clip(actor.parameters + self.learning_rate_actor*gi, -2*np.pi, 2*np.pi)
+
             # print(f"grad norms gi={np.linalg.norm(gi.flatten())}")
             if return_grads:
                 grad_norms.append(np.linalg.norm(grad_actor.flatten()))
@@ -303,7 +309,7 @@ class CriticNN(nn.Module):
         
 class NormalPolicy:
     """Policy that uses a multivatriable normal distribution.
-        The parameters are theta, which multiply the state to define the mean mu:
+        The parameters are theta, which the angles of the Rot mat for each vector:
         parameters: mu = theta * z
         gradient: w.r.t theta
         covariance matrix: Constant for now, not a parameter
@@ -313,32 +319,23 @@ class NormalPolicy:
         NOTICE: individual values of p(a|z) can be greater than 1, as this is a density funct.  (pdf, continous)
         the pdf of a singular point makes no sense, neeeds to be over a differential of a (i.e pdf is per unit lenght)
     """
-    def __init__(self, input_size, output_size = 2) -> None:
+    def __init__(self, input_size, output_size = 2, Sigma = None) -> None:
         self.dim = output_size
         self.z_dim = input_size
 
-        param =np.zeros([self.dim,self.z_dim])
-
-        for i in range(int(self.z_dim/self.dim)):
-            param[:,i*self.dim:(i+1)*self.dim] = -np.eye(self.dim)
+        param =anp.zeros(int(self.z_dim/self.dim))
 
         self.parameters = param
-        self.Sigma = np.eye(self.dim)*0.2
+        if Sigma is None:
+            self.Sigma = anp.eye(self.dim)*0.2
+        else:
+            self.Sigma = Sigma
 
     def p_of_a(self, z:np.ndarray, a:np.ndarray) -> np.ndarray:
         ''' a needs to be a row vector (1D flat)
             z needs to be a row vector (1D flat)
         '''
-        z.shape = (np.size(z),1)
-        a.shape = (np.size(a),1)
-
-        first_term = 1/np.sqrt((2*np.pi)**self.dim * np.linalg.det(self.Sigma))
-        exp_term = np.exp(-1/2 * (a-self.parameters @ z).T @ np.linalg.inv(self.Sigma) @ (a-self.parameters @ z))
-
-        z.shape = (np.size(z),)
-        a.shape = (np.size(a),)
-
-        return first_term*exp_term[0][0]
+        pass
 
     def compute_grad(self, z:np.ndarray, a:np.ndarray, Ni):
         ''' a needs to be a row vector (1D flat)
@@ -350,19 +347,26 @@ class NormalPolicy:
         a.shape = (np.size(a),1)
 
         # Used to only calculate the gradient of the states that actually count
-        valid_idx = len(Ni)*self.dim
+        idx = np.arange(1,int(self.z_dim/self.dim+1))<=len(Ni)
 
-        self.grad = np.zeros([self.dim,self.z_dim])
+        # Define scalar function to which apply numerical gradient: https://github.com/HIPS/autograd/blob/master/docs/tutorial.md
+        def my_fun(variable):
+            R0 = anp.array([[anp.cos(variable[0]), -anp.sin(variable[0])],[anp.sin(variable[0]),anp.cos(variable[0])]])*idx[0]
+            R1 = anp.array([[anp.cos(variable[1]), -anp.sin(variable[1])],[anp.sin(variable[1]),anp.cos(variable[1])]])*idx[1]
+            R2 = anp.array([[anp.cos(variable[2]), -anp.sin(variable[2])],[anp.sin(variable[2]),anp.cos(variable[2])]])*idx[2]
+            R = anp.concatenate((R0,R1,R2),1)
 
-        self.grad[:,0:valid_idx] = np.linalg.inv(self.Sigma) @ (a- self.parameters[:,0:valid_idx] @ z[0:valid_idx,:]) @ z[0:valid_idx,:].T
-
+            return (-1/2*(a- R @ z).T @ np.linalg.inv(self.Sigma) @ (a- R @ z))[0,0]
+        
+        grad_fun = grad(my_fun)
+        self.grad = grad_fun(self.parameters)
         z.shape = (np.size(z),)
         a.shape = (np.size(a),)
 
         return self.grad
     
     def clip_grad_norm(self, grad:np.ndarray, clip_norm:float):
-        # If the gradient norm is to be cliped to a value:
+        # If the gradient norm is to be clipped to a value:
         grad_norm = np.linalg.norm(grad.flatten())
         # If the current norm is less than the clipping, do nothing. If more, make the norm=cliped_norm
         if grad_norm <= clip_norm:
@@ -376,9 +380,15 @@ class NormalPolicy:
         z.shape = (np.size(z),1)
 
         # Used to only calculate the gradient of the states that actually count
-        valid_idx = len(Ni)*self.dim
+        idx = np.arange(1,int(self.z_dim/self.dim+1))<=len(Ni)
 
-        mu = (self.parameters[:,0:valid_idx] @ z[0:valid_idx,:]).flatten()
+        variable = self.parameters
+        R0 = anp.array([[anp.cos(variable[0]), -anp.sin(variable[0])],[anp.sin(variable[0]),anp.cos(variable[0])]])*idx[0]
+        R1 = anp.array([[anp.cos(variable[1]), -anp.sin(variable[1])],[anp.sin(variable[1]),anp.cos(variable[1])]])*idx[1]
+        R2 = anp.array([[anp.cos(variable[2]), -anp.sin(variable[2])],[anp.sin(variable[2]),anp.cos(variable[2])]])*idx[2]
+        R = anp.concatenate((R0,R1,R2),1)
+
+        mu = (R @ z).flatten()
         
         z.shape = (np.size(z),)
         a = np.random.multivariate_normal(mu, self.Sigma)

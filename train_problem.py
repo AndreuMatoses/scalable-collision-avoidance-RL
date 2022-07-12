@@ -14,13 +14,13 @@ env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_format
 print(env)
 # env.show()
 
-N_Episodes = 2
+N_Episodes = 300
 plot_last = 2
 
 T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
 alpha_critic = 10**-2
-alpha_actor = 10**-3
+alpha_actor = 10**-5
 M = 50 # Epochs, i.e steps of the SDG for the critic NN
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
