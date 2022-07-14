@@ -11,9 +11,12 @@ from IPython import display
 
 ### TO DO ############
 """
+- Change back from not using Critic NN in training(),benchmark_critic()SACAgent (now trying Gt)
 - TrainedAgnet for the actor loading
 - check what happens to gradients
 - Add proper "finished in step()
+- Remove the fixed Ni=[1,2,3] in train/compute_grad()
+- Remove fixed random seed to initialize agents
 - 
 - Plot of the Q function field for a fixed kth satates (varying xi)
 - Proper animation
@@ -192,7 +195,8 @@ class drones:
                 coord = [idx*delta_l, jdx*delta_l]
                 possible_coord.append(coord)
 
-        random.seed(1)
+        # REMOVE THIS seed FOR true random initial state
+        # random.seed(1)
         random_coord = np.array(random.sample(possible_coord, n_agents))
         state[:,0:dim] = random_coord
 
@@ -251,8 +255,8 @@ class drones:
         n_agents = np.size(state,0)
 
         # weights: q|xi-xF|^2 + b log(d_i/d_ij). I multiply per dt as i assume is cost/time
-        q = 1*dt
-        b = 1*dt
+        q = 2*dt
+        b = 0*dt
 
         xF = np.reshape(end_points,[n_agents,dim])
         xi = state[:,0:dim]
@@ -464,8 +468,8 @@ class drones:
         # fig = plt.gcf()
         # ax = fig.gca()
 
-        ax.set_xlim((0, self.grid[0]));
-        ax.set_ylim((0, self.grid[1]));
+        # ax.set_xlim((0, self.grid[0]));
+        # ax.set_ylim((0, self.grid[1]));
         ax.grid(True);
 
         # Plot obstacles
@@ -485,7 +489,8 @@ class drones:
             collisions_xcord = x_cord[i,collision_table[i,:]]
             collisions_ycord = y_cord[i,collision_table[i,:]]
             total_markers  = len(collisions_xcord)
-            ax.plot(collisions_xcord,collisions_ycord,color=agent_color, marker = "v",fillstyle = "none", markevery=np.floor(total_markers/10));
+            # problem when it is 0, markevery=np.floor(total_markers/2))
+            ax.plot(collisions_xcord,collisions_ycord,color=agent_color, marker = "v",fillstyle = "none", markevery=2);
             ax.set_title(f"{self.n_agents} agents, collisions = {collisions}")
 
 

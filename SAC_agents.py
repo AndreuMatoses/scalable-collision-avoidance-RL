@@ -125,7 +125,7 @@ class SACAgents:
         actions = deque()
         for i in range(self.n_agents):
             z_state = z_states[i].flatten()
-            actions.append(self.actors[i].sample_action(z_state, Ni))
+            actions.append(self.actors[i].sample_action(z_state, Ni[i]))
 
         return actions
 
@@ -134,6 +134,8 @@ class SACAgents:
 
         if actor_lr is not None:
             self.learning_rate_actor = actor_lr
+
+        Gts = deque() # for debug, delete after -> acces data Gts[i][t]
 
         # CRITIC LOOP
         for i in range(self.n_agents):
@@ -158,28 +160,29 @@ class SACAgents:
                 Gt_array[t]  = Gt_array[t+1]*self.discount + rewards[t]
 
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
+            Gts.append(Gt_array) # for debug
 
-            for epoch in range(epochs):
-                ### Perfrom omega (critic) update:
-                # Set gradient to zero
-                critic_optimizer.zero_grad()
-                # value function: # calculate the approximated Q(s,a) = NN(input)
-                Q_approx = criticNN(inputs).squeeze()
-                # Compute MSE loss
-                loss = nn.functional.mse_loss(Q_approx, Gt)
-                # Compute gradient
-                loss.backward()
-                # Clip gradient norm to avoid infinite gradient
-                nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
-                # Update
-                critic_optimizer.step()
+            # for epoch in range(epochs):
+            #     ### Perfrom omega (critic) update:
+            #     # Set gradient to zero
+            #     critic_optimizer.zero_grad()
+            #     # value function: # calculate the approximated Q(s,a) = NN(input)
+            #     Q_approx = criticNN(inputs).squeeze()
+            #     # Compute MSE loss
+            #     loss = nn.functional.mse_loss(Q_approx, Gt)
+            #     # Compute gradient
+            #     loss.backward()
+            #     # Clip gradient norm to avoid infinite gradient
+            #     nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+            #     # Update
+            #     critic_optimizer.step()
         
         # ACTOR LOOP
         grad_norms = []
         gi_norms = []
         for i in range(self.n_agents):
             # to access buffer data: buffers.buffers[i][t].action, namedtuple('experience', ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
-            
+            # Gt: Gts[i][t]
             actor = self.actors[i]
             gi = 0 #initialize to 0
 
@@ -188,7 +191,7 @@ class SACAgents:
                 ait = buffers.buffers[i][t].action
                 Nit = buffers.buffers[i][t].Ni
                 
-                grad_actor = actor.compute_grad(zit,ait, [1,2,3])
+                grad_actor = actor.compute_grad(zit,ait, [1])
                 # PUT Ni HERE INSTEAD of [1,2,3]
                 # grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
 
@@ -196,14 +199,15 @@ class SACAgents:
                 for j in Nit: # REMOVE THE [0]
                     zjt = buffers.buffers[j][t].z_state
                     ajt = buffers.buffers[j][t].action
-                    Q_input_tensor =  torch.tensor(np.hstack((zjt,ajt)), dtype=torch.float32)
-                    Qj = self.criticsNN[j](Q_input_tensor).detach().numpy()
-                    Qj_sum += Qj[0]
+                    # Q_input_tensor =  torch.tensor(np.hstack((zjt,ajt)), dtype=torch.float32)
+                    # Qj = self.criticsNN[j](Q_input_tensor).detach().numpy()[0]
+                    Qj = Gts[j][t]
+                    Qj_sum += Qj
 
                 gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
 
             # Update policy parameters with approx gradient gi (clipped to avoid infinity gradients)
-            gi = actor.clip_grad_norm(gi, clip_norm=50)
+            gi = actor.clip_grad_norm(gi, clip_norm=100)
             # MAKE SURE TO CLIP THE PARAMS from 0 to 2*Pi
             actor.parameters =  actor.parameters + self.learning_rate_actor*gi
             # actor.parameters =  np.clip(actor.parameters + self.learning_rate_actor*gi, -2*np.pi, 2*np.pi)
@@ -248,8 +252,8 @@ class SACAgents:
 
             # value function: # calculate the approximated Q(s,a) = NN(input)
             Q_approx = criticNN(inputs).squeeze()
-
-            Q_approxs.append(Q_approx.detach().numpy())
+            # Q_approxs.append(Q_approx.detach().numpy())
+            Q_approxs.append(Gt_array)
             Gts.append(Gt_array) # for debug
 
         # Gts is the simulated Q(st,at) values for each agent
@@ -323,7 +327,7 @@ class NormalPolicy:
         self.dim = output_size
         self.z_dim = input_size
 
-        param =anp.zeros(int(self.z_dim/self.dim))
+        param =anp.ones(int(self.z_dim/self.dim))*0
 
         self.parameters = param
         if Sigma is None:
@@ -394,7 +398,7 @@ class NormalPolicy:
         a = np.random.multivariate_normal(mu, self.Sigma)
         
         # Clip the action to not have infinite action
-        return np.clip(a,-1,+1)
+        return np.clip(a,-2,+2)
         
 
 class ExperienceBuffers:

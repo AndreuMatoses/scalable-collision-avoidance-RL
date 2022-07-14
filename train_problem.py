@@ -6,22 +6,38 @@ from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
 from SAC_agents import *
 
+plt.style.use('seaborn-dark-palette')
+tex_fonts = {
+    # Use LaTeX to write all text
+    #     "text.usetex": True,
+    "font.family": "sans-serif",
+    # Use 10pt font in plots, to match 10pt font in document
+    "axes.labelsize": 10,
+    "font.size": 10,
+    # Make the legend/label fonts a little smaller
+    "legend.fontsize": 10,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10
+}
+
+plt.rcParams.update(tex_fonts)
+
 
 ### Set up parameters ###
-n_agents = 4
+n_agents = 3
 deltas = np.ones(n_agents)*2
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 300
+N_Episodes = 1000
 plot_last = 2
 
-T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
+T = 10 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
 alpha_critic = 10**-2
-alpha_actor = 10**-5
-M = 50 # Epochs, i.e steps of the SDG for the critic NN
+alpha_actor = 10**-4
+M = 30 # Epochs, i.e steps of the SDG for the critic NN
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
 
@@ -64,6 +80,7 @@ for episode in EPISODES:
         # actions = drone_env.gradient_control(state, env)
         # actions = drone_env.proportional_control(state, env)
         actions = agents.forward(z_states, Ni)
+        # actions = agents.forward(z_states, Ni)
 
         # Update environment one time step with the actions
         new_state, new_z, rewards, n_collisions, finished = env.step(actions)
@@ -119,4 +136,5 @@ for episode in EPISODES:
 agents.save(filename="trained")
 
 plot_rewards(total_reward_per_episode,total_collisions_per_episode, n_ep_running_average=50)
+# plt.savefig("images/reward_training.pdf",format='pdf', bbox_inches='tight')
 plot_grads(grad_per_episode,gi_per_episode)
