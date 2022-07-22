@@ -68,6 +68,7 @@ class drones:
         self.goal = self.grid
         self.k_closest = k_closest
         self.simplify_zstate = simplify_zstate
+        self.internal_t = 0
 
         # Other geometry parameters
         self.drone_radius = np.ones(n_agents)*0.1 # radius of each drone in m
@@ -95,6 +96,7 @@ class drones:
 
     def reset(self, renew_obstacles = True):
         self.state, self.z_states = self.init_agents(self.n_agents)
+        self.internal_t = 0
         if renew_obstacles == True:
            self.obstacles = self.create_obstacles(self.n_obstacles)
 
@@ -241,8 +243,15 @@ class drones:
         self.Ni = Ni
 
         # SHould return (s', r(s,a), n_collisions(s') ,finished)
-        finished = False
+        end_points = np.reshape(self.end_points,np.shape(self.state[:,0:dim]))
+        error_from_end = np.linalg.norm(end_points-self.state[:,0:dim],axis = 1)
 
+        if np.all(error_from_end <=0.2) or self.internal_t>=200-1:
+            finished = True
+        else:
+            finished = False
+
+        self.internal_t += 1
         # TO DO: Proper is_finished
         return self.state, z_states, r_vec, n_collisions, finished
 
@@ -256,7 +265,7 @@ class drones:
 
         # weights: q|xi-xF|^2 + b log(d_i/d_ij). I multiply per dt as i assume is cost/time
         q = 2*dt
-        b = 0*dt
+        b = 0.5*dt
 
         xF = np.reshape(end_points,[n_agents,dim])
         xi = state[:,0:dim]

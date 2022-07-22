@@ -115,17 +115,19 @@ class SACAgents:
         self.learning_rate_actor = learning_rate_actor
 
         # List of NN that estimate Q
-        self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
+        # self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
+        self.criticsNN = [CriticNN(dim_local_state, output_size=1) for i in range(n_agents)]
         self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
 
-    def forward(self, z_states, Ni) -> list:
+    def forward(self, z_states, N) -> list:
         ''' Function that calculates the actions to take from the z_states list (control law) 
             actions: list of row vectors [u1^T, u2^T,...]'''
 
         actions = deque()
         for i in range(self.n_agents):
             z_state = z_states[i].flatten()
-            actions.append(self.actors[i].sample_action(z_state, Ni[i]))
+            actions.append(self.actors[i].sample_action(z_state, N[i]))
+            # actions.append(self.actors[i].sample_action(z_state, [1]))
 
         return actions
 
@@ -150,6 +152,7 @@ class SACAgents:
             # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]
             inputs = np.column_stack((states,actions))
             inputs = torch.tensor(inputs, dtype=torch.float32)
+            # inputs = torch.tensor(np.array(states), dtype=torch.float32)
 
             # Calculate the simulated Q value (target), Monte carlo Gt
             # Going backwards, G(t) = gamma * G(t+1) + r(t), with G(T)=r(T)
@@ -162,20 +165,19 @@ class SACAgents:
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
             Gts.append(Gt_array) # for debug
 
-            # for epoch in range(epochs):
-            #     ### Perfrom omega (critic) update:
-            #     # Set gradient to zero
-            #     critic_optimizer.zero_grad()
-            #     # value function: # calculate the approximated Q(s,a) = NN(input)
-            #     Q_approx = criticNN(inputs).squeeze()
-            #     # Compute MSE loss
-            #     loss = nn.functional.mse_loss(Q_approx, Gt)
-            #     # Compute gradient
-            #     loss.backward()
-            #     # Clip gradient norm to avoid infinite gradient
-            #     nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
-            #     # Update
-            #     critic_optimizer.step()
+            # ### Perfrom omega (critic) update:
+            # # Set gradient to zero
+            # critic_optimizer.zero_grad()
+            # # value function: # calculate the approximated V(s) = NN(input)
+            # V_approx = criticNN(inputs).squeeze()
+            # # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
+            # loss = nn.functional.mse_loss(V_approx, Gt)
+            # # Compute gradient
+            # loss.backward()
+            # # Clip gradient norm to avoid infinite gradient
+            # nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+            # # Update
+            # critic_optimizer.step()
         
         # ACTOR LOOP
         grad_norms = []
@@ -191,20 +193,25 @@ class SACAgents:
                 ait = buffers.buffers[i][t].action
                 Nit = buffers.buffers[i][t].Ni
                 
-                grad_actor = actor.compute_grad(zit,ait, [1])
+                grad_actor = actor.compute_grad(zit,ait, Nit)
                 # PUT Ni HERE INSTEAD of [1,2,3]
                 # grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
 
                 Qj_sum = 0
+                # input_tensor =  torch.tensor(zit, dtype=torch.float32)
+                # Vi = self.criticsNN[i](input_tensor).detach().numpy()[0]
                 for j in Nit: # REMOVE THE [0]
                     zjt = buffers.buffers[j][t].z_state
                     ajt = buffers.buffers[j][t].action
                     # Q_input_tensor =  torch.tensor(np.hstack((zjt,ajt)), dtype=torch.float32)
                     # Qj = self.criticsNN[j](Q_input_tensor).detach().numpy()[0]
-                    Qj = Gts[j][t]
-                    Qj_sum += Qj
+                    # input_tensor =  torch.tensor(zjt, dtype=torch.float32)
+                    # Vj = self.criticsNN[j](input_tensor).detach().numpy()[0]
+                    # Advantage_j_sum += (Gts[j][t] - Vi)
+                    Qj_sum += Gts[j][t]
 
                 gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
+                # gi += self.discount**t * 1/self.n_agents* grad_actor * Advantage_j_sum
 
             # Update policy parameters with approx gradient gi (clipped to avoid infinity gradients)
             gi = actor.clip_grad_norm(gi, clip_norm=100)
@@ -236,8 +243,8 @@ class SACAgents:
             states, actions, rewards, new_states, Ni, finished = zip(*buffer)
 
             # Create input tensor, This one: input = [s,a] tensor -> Q(s,a)
-            inputs = np.column_stack((states,actions))
-            inputs = torch.tensor(inputs, dtype=torch.float32)
+            # inputs = np.column_stack((states,actions))
+            inputs = torch.tensor(np.array(states), dtype=torch.float32)
             ## Actor update
 
             # Calculate the simulated Q value (target), Monte carlo Gt
@@ -250,8 +257,8 @@ class SACAgents:
 
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
 
-            # value function: # calculate the approximated Q(s,a) = NN(input)
-            Q_approx = criticNN(inputs).squeeze()
+            # value function: # calculate the approximated Q(s,a) ~= Gt = V(s) + A(s,a) => Gt-V(s) = A(s,a)
+            # Q_approx = criticNN(inputs).squeeze()
             # Q_approxs.append(Q_approx.detach().numpy())
             Q_approxs.append(Gt_array)
             Gts.append(Gt_array) # for debug
@@ -324,14 +331,17 @@ class NormalPolicy:
         the pdf of a singular point makes no sense, neeeds to be over a differential of a (i.e pdf is per unit lenght)
     """
     def __init__(self, input_size, output_size = 2, Sigma = None) -> None:
+
+        self.take_all_states = False
         self.dim = output_size
         self.z_dim = input_size
 
-        param =anp.ones(int(self.z_dim/self.dim))*0
+        # param =anp.array([-1.6,-1.6,-1.6])
+        param =-anp.ones(int(self.z_dim/self.dim))*2
 
         self.parameters = param
         if Sigma is None:
-            self.Sigma = anp.eye(self.dim)*0.2
+            self.Sigma = anp.eye(self.dim)*0.3
         else:
             self.Sigma = Sigma
 
@@ -351,7 +361,10 @@ class NormalPolicy:
         a.shape = (np.size(a),1)
 
         # Used to only calculate the gradient of the states that actually count
-        idx = np.arange(1,int(self.z_dim/self.dim+1))<=len(Ni)
+        if self.take_all_states:
+            idx = anp.ones(int(self.z_dim/self.dim))
+        else:
+            idx = np.arange(1,int(self.z_dim/self.dim+1))<=len(Ni)
 
         # Define scalar function to which apply numerical gradient: https://github.com/HIPS/autograd/blob/master/docs/tutorial.md
         def my_fun(variable):
@@ -384,12 +397,16 @@ class NormalPolicy:
         z.shape = (np.size(z),1)
 
         # Used to only calculate the gradient of the states that actually count
-        idx = np.arange(1,int(self.z_dim/self.dim+1))<=len(Ni)
+        if self.take_all_states:
+            idx = anp.ones(int(self.z_dim/self.dim))
+        else:
+            idx = np.arange(1,int(self.z_dim/self.dim+1))<=len(Ni)
 
         variable = self.parameters
         R0 = anp.array([[anp.cos(variable[0]), -anp.sin(variable[0])],[anp.sin(variable[0]),anp.cos(variable[0])]])*idx[0]
         R1 = anp.array([[anp.cos(variable[1]), -anp.sin(variable[1])],[anp.sin(variable[1]),anp.cos(variable[1])]])*idx[1]
         R2 = anp.array([[anp.cos(variable[2]), -anp.sin(variable[2])],[anp.sin(variable[2]),anp.cos(variable[2])]])*idx[2]
+        # R3 = anp.array([[anp.cos(variable[3]), -anp.sin(variable[3])],[anp.sin(variable[3]),anp.cos(variable[3])]])*idx[3]
         R = anp.concatenate((R0,R1,R2),1)
 
         mu = (R @ z).flatten()

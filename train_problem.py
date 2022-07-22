@@ -25,19 +25,19 @@ plt.rcParams.update(tex_fonts)
 
 ### Set up parameters ###
 n_agents = 3
-deltas = np.ones(n_agents)*2
+deltas = np.ones(n_agents)*1.5
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 1000
+N_Episodes = 1000  
 plot_last = 2
 
-T = 10 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
+# T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
 alpha_critic = 10**-2
 alpha_actor = 10**-4
-M = 30 # Epochs, i.e steps of the SDG for the critic NN
+M = 2 # Epochs, i.e steps of the SDG for the critic NN
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
 
@@ -49,12 +49,12 @@ total_reward_per_episode = []
 grad_per_episode = np.zeros([N_Episodes, n_agents])
 gi_per_episode = np.zeros_like(grad_per_episode)
 
-times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
+# times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 
 
 agents = SACAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
 print("### Running Scalable-Actor-Critic with params: ###")
-print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = {drone_env.dt}s)")
+print(f"Episodes = {N_Episodes}, max Time iterations = {200} (T = {10}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")
 print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr for actor  = {alpha_actor}, epochs M = {M}")
 
@@ -69,8 +69,11 @@ for episode in EPISODES:
     # env.show()
 
     buffers = ExperienceBuffers(env.n_agents)
+
     # SIMULATION OVER T
-    for t_iter, time in enumerate(times):
+    t_iter = 0
+    finished = False
+    while not finished:
         # Simple gradient controller u_i = -grad_i, assuming Nj = V
         state = env.state
         z_states = env.z_states
@@ -93,6 +96,8 @@ for episode in EPISODES:
         if episode >= N_Episodes-plot_last:
             # reward_history[t_iter,:] = reward
             trajectory.append(new_state.copy())
+        
+        t_iter +=1
 
     ### END OF EPISODES
     # Train of critic with the data of the episode
@@ -117,13 +122,13 @@ for episode in EPISODES:
     average_reward = running_average(total_reward_per_episode, 50)[-1]
     average_collisions = running_average(total_collisions_per_episode, 50)[-1]
     EPISODES.set_description(
-        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter+1} - Average: {average_reward:.1f}/{average_collisions:.2f}/{t_iter+1}")
+        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{t_iter}")
 
     # Plot current trajectory
 
     if episode >= N_Episodes-plot_last:
         env.plot(trajectory)
-
+        times = np.arange(0, t_iter)*drone_env.dt
         plt.figure()
         for i in range(env.n_agents):
             agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
