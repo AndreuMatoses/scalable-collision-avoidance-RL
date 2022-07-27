@@ -125,13 +125,13 @@ class TrainedAgent:
 
 class SA2CAgents:
 
-    def __init__(self, n_agents, dim_local_state, dim_local_action, discount, epochs, learning_rate_critic = 10**(-3), learning_rate_actor = 10**(-3), policy_type = "normal") -> None:
+    def __init__(self, n_agents, dim_local_state, dim_local_action, discount, epochs, learning_rate_critic = 10**(-3), learning_rate_actor = 10**(-3)) -> None:
         '''* dim_local_state is the total size of the localized vector that the input of the Q and pi approximations use, i.e (k+1)*dim'''
 
         self.n_agents = n_agents
         self.dim_local_state = dim_local_state
         self.dim_local_action = dim_local_action
-        self.policy_type = policy_type # What kind of policy (NN, stochastic normal dist, etc...)
+        # self.policy_type = policy_type # What kind of policy (NN, stochastic normal dist, etc...)
         self.discount = discount
         self.epochs = epochs
 
@@ -295,8 +295,8 @@ class SA2CAgents:
 
     def save(self,filename = "network"):
         folder ="models"
-        cirtic_name = filename + "-critics.pth"
-        actors_name = filename + "-actors.pth"
+        cirtic_name = filename + "-A2Ccritics.pth"
+        actors_name = filename + "-A2Cactors.pth"
 
         torch.save(self.criticsNN, os.path.join(folder,cirtic_name))
         print(f'Saved Critic NNs as {cirtic_name}')
@@ -305,5 +305,171 @@ class SA2CAgents:
 
 
 class SPPOAgents:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, n_agents, dim_local_state, dim_local_action, discount, epochs, learning_rate_critic = 10**(-3), learning_rate_actor = 10**(-3), epsilon = 0.2) -> None:
+        '''* dim_local_state is the total size of the localized vector that the input of the Q and pi approximations use, i.e (k+1)*dim'''
+
+        self.n_agents = n_agents
+        self.dim_local_state = dim_local_state
+        self.dim_local_action = dim_local_action
+        # self.policy_type = policy_type # What kind of policy (NN, stochastic normal dist, etc...)
+        self.discount = discount
+        self.epochs = epochs
+        self.epsilon = epsilon
+
+        # Define actor networks
+        self.actorsNN = [NormalActorNN(dim_local_state, dim_action=dim_local_action) for i in range(n_agents)]
+        self.learning_rate_actor = learning_rate_actor
+        self.actor_optimizers = [optim.Adam(self.actorsNN[i].parameters(),lr = learning_rate_actor) for i in range(n_agents)]
+
+
+        # List of NN that estimate Q (or V if we use advantage)
+        # self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
+        self.criticsNN = [CriticNN(dim_local_state, output_size=1) for i in range(n_agents)]
+        self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
+
+    def forward(self, z_states, N) -> list:
+        ''' Function that calculates the actions to take from the z_states list (control law) 
+            actions: list of row vectors [u1^T, u2^T,...]'''
+
+        actions = deque()
+        for i in range(self.n_agents):
+            z_state = z_states[i].flatten()
+            actorNN = self.actorsNN[i]
+
+            state_tensor = torch.tensor(z_state, dtype=torch.float32)
+            mu_tensor,sigma_tensor = actorNN(state_tensor)
+
+            # Normally distributed value with the mu and sigma (std^2) from ActorNN
+            std = np.sqrt(sigma_tensor.detach().numpy())
+            action = np.random.normal(mu_tensor.detach().numpy(),std)
+
+            # Acion must be between -1,1
+            actions.append(np.clip(action,-1,1))
+
+        return actions
+
+    def train(self, buffers: deque, actor_lr = None, return_grads = False):
+        epochs = self.epochs
+
+        if actor_lr is not None:
+            self.learning_rate_actor = actor_lr
+
+        T = len(buffers)
+        # Gts = deque() # for debug, delete after -> acces data Gts[i][t]
+        Git = np.zeros([self.n_agents, T]) # Git[i,t]
+        advantage_estim = np.zeros([self.n_agents, T]) # advantage_estim[i,t]
+        p_old_it = np.zeros([self.n_agents, T]) # p_old_it[i,t]
+        
+
+        # Agents LOOP, to create required variables
+        for i in range(self.n_agents):
+            # separate data from experience buffer
+            buffer = buffers.buffers[i]
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
+
+            # Calculate the simulated Q value (target), Monte carlo Gt
+            # Going backwards, G(t) = gamma * G(t+1) + r(t), with G(T)=r(T)
+            # T = len(rewards)
+            Gt_array = np.zeros([T])
+            Gt_array[-1] = rewards[-1]
+            for t in range(T-2,-1,-1):
+                Gt_array[t]  = Gt_array[t+1]*self.discount + rewards[t]
+
+            Git[i,:] = Gt_array
+        
+        # Calculate the advantage estimator (attempt), and old p of a
+        for i in range(self.n_agents):
+            # separate data from experience buffer
+            buffer = buffers.buffers[i]
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
+
+            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]. If instead V(s), input = [s]
+            # inputs = torch.tensor(np.column_stack((states,actions)), dtype=torch.float32)
+            states_tensor = torch.tensor(np.array(states), dtype=torch.float32)
+            actions_tensor = torch.tensor(np.array(actions), dtype=torch.float32)
+            Vi_baselines = self.criticsNN[i](states_tensor).squeeze().detach().numpy()
+           
+            p_old_it[i,:] = self.probability_of_ai(states_tensor, actions_tensor, i).detach().numpy()
+            advantage_estim[i,:] = -Vi_baselines
+
+            for t in range(T):
+                Nit = buffers.buffers[i][t].Ni
+                for j in Nit: # i included here
+                    advantage_estim[i,t] += Git[j,t]
+
+        ### Training LOOP, per agent: ###
+        for i in range(self.n_agents):
+            buffer = buffers.buffers[i]
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
+            Gt = torch.tensor(Git[i,:],dtype=torch.float32)
+            states_tensor = torch.tensor(np.array(states), dtype=torch.float32)
+            actions_tensor = torch.tensor(np.array(actions), dtype=torch.float32)
+
+            criticNN = self.criticsNN[i]
+            critic_optimizer = self.critic_optimizers[i]
+            actorNN = self.actorsNN[i]
+            actor_optimizer = self.actor_optimizers[i]
+
+            # Perform training for epochs
+            for m in range(epochs):
+
+                ### CRITIC update:
+                # Set gradient to zero
+                critic_optimizer.zero_grad() 
+                # value function: # calculate the approximated V(s) = NN(input)
+                V_approx = criticNN(states_tensor).squeeze()
+                # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
+                loss = nn.functional.mse_loss(V_approx, Gt)
+                # Compute gradient
+                loss.backward()
+                # Clip gradient norm to avoid infinite gradient
+                nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+                # Update
+                critic_optimizer.step()
+
+                ### ACTOR update
+                # Set gradient to zero
+                actor_optimizer.zero_grad()
+                Adv =  torch.tensor(advantage_estim[i,:], dtype=torch.float32)
+                pi_old = torch.tensor(p_old_it[i,:], dtype=torch.float32)
+                # Compute r_theta ratio of probabilities
+                current_pi = self.probability_of_ai(states_tensor,actions_tensor, i)
+                r_theta = current_pi/pi_old
+                # Comute loss function - 1/N (min...)
+                left_min = r_theta * Adv
+                right_min = torch.clamp(r_theta, 1 - self.epsilon, 1 + self.epsilon) * Adv #clipping method for tensors
+                loss = - torch.mean(torch.min(left_min,right_min))
+                # compute gradient
+                loss.backward()
+                # Clip gradient norm to avoid infinite gradient
+                nn.utils.clip_grad_norm_(actorNN.parameters(), max_norm=1) 
+                # Update
+                actor_optimizer.step()
+
+
+    def probability_of_ai(self,states_i,actions_i, agent:int):
+        """ all variables are tensors. the time vector for current agent=i
+            assume that the two action components are not correlated,
+            thus P of both happening is p1*p2
+        """
+        i = agent
+        mu , sigma = self.actorsNN[i](states_i)
+
+        # p_tensor = (2*np.pi*sigma**2)**(-1/2) * torch.exp(-(actions-mu)**2/(2*sigma**2))
+        # p = p_tensor[:,0]*p_tensor[:,1] # assuming uncorrelated action
+
+        p1 = torch.pow(2 * np.pi * sigma[:,0], -0.5) * torch.exp(-(actions_i[:,0] - mu[:,0])**2 / (2 * sigma[:,0]))
+        p2 = torch.pow(2 * np.pi * sigma[:,1], -0.5) * torch.exp(-(actions_i[:,1] - mu[:,1])**2 / (2 * sigma[:,1]))
+        p = p1*p2
+
+        return p      
+
+    def save(self,filename = "network"):
+        folder ="models"
+        cirtic_name = filename + "-PP0critics.pth"
+        actors_name = filename + "-PP0actors.pth"
+
+        torch.save(self.criticsNN, os.path.join(folder,cirtic_name))
+        print(f'Saved Critic NNs as {cirtic_name}')
+        torch.save(self.actors, os.path.join(folder,actors_name))
+        print(f'Saved Actors List as {actors_name}')

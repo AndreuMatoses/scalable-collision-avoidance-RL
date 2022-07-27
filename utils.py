@@ -81,9 +81,6 @@ class NormalActorNN(nn.Module):
 
 
     def forward(self, z):
-        # Function used to compute the forward pass
-        # If the structure of the NN is changed, this needs to be changed accordingly
-
         # Compute first layer
         l1 = self.input_layer(z)
         l1 = self.input_layer_activation(l1)
@@ -105,7 +102,6 @@ class NormalActorNN(nn.Module):
         # out_1 = mu, out_2 = sigma^2
         return out_1,out_2
 
-        
         
 class NormalPolicy:
     """Policy that uses a multivatriable normal distribution.
