@@ -25,57 +25,85 @@ class RandomAgent:
 class TrainedAgent:
     ''' Agent that loads and follows a learned policy/critic
      '''
-    def __init__(self, file_name:str, n_agents = "auto", discount = 0.99):
+    def __init__(self, critics_name:str, actors_name:str, n_agents = "auto", discount = 0.99):
 
-        file_name = os.path.join("models", file_name)
+        file_name_critics = os.path.join("models", critics_name)
         # Load critic
         try:
-            criticsNN = torch.load(file_name)
+            criticsNN = torch.load(file_name_critics)
             print(f'Loaded Critic, n_agents = {len(criticsNN)}, discount = {discount}. Network model[0]: {criticsNN[0]}')
         except:
-            print(f'File {file_name} not found!')
+            print(f'File {file_name_critics} not found!')
             exit(-1)
 
         self.criticsNN = criticsNN
+        self.critics_name = critics_name
+
         if n_agents == "auto":
             self.n_agents = len(criticsNN)
         else:
             self.n_agents = n_agents
 
+        # load actor
+        file_name_actors = os.path.join("models", actors_name)
+
+        try:
+            actors = torch.load(file_name_actors)
+            print(f'Loaded actors, n_agents = {len(criticsNN)}, discount = {discount}. Type: {type(actors[0])}')
+        except:
+            print(f'File {file_name_actors} not found!')
+            exit(-1)
+        self.actors = actors
+        self.actors_name = actors_name
+
         self.discount = discount # to benchmark the critic
 
-    def forward(self, state: np.ndarray):
+    def forward(self, z_states: list, N:list):
         """ Returns:
                 action (np.ndarray): array of float values containing the
                     action. The dimensionality is equal to self.n_actions from
                     the parent class Agent
         """
-        # mu, var = self.actorNN(torch.tensor([state]))
-        # mu = mu.detach().numpy()
-        # std = torch.sqrt(var).detach().numpy()
-        # actions = np.clip(np.random.normal(mu, std), -1, 1).flatten()
+        actions = []
+        if type(self.actors[0]) is NormalPolicy:
+            # z_state in this case
+            for i in range(self.n_agents):
+                z_state = z_states[i].flatten()
+                Ni = N[i]
+                if i < len(self.actors):
+                    actor = self.actors[i]
+                else:
+                    actor = self.actors[0]
 
-        # return actions
-        pass
+                action = actor.sample_action(z_state, Ni)
+                actions.append(action)
+        else:
+            print(f"Error type of policy {type(self.actors[0])}")
+
+        return actions
 
     def benchmark_cirtic(self, buffers: deque, only_one_NN = False):
 
         Gts = deque() # for debug, delete after
-        Q_approxs = deque() # for debug, delete after
+        V_approxs = deque() # for debug, delete after
         criticNN= self.criticsNN[0]
 
         for i in range(self.n_agents):
             # NN for this agent:
             if not only_one_NN:
-                criticNN = self.criticsNN[i]
+                if i < len(self.criticsNN):
+                    criticNN = self.criticsNN[i]
+                else:
+                    criticNN = self.criticsNN[0]
             
             # separate data from experience buffer
             buffer = buffers.buffers[i]
-            states, actions, rewards, new_states, Ni, inished = zip(*buffer)
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
 
-            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a)
-            inputs = np.column_stack((states,actions))
-            inputs = torch.tensor(inputs, dtype=torch.float32)
+            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]. If instead V(s), input = [s]
+            # inputs = np.column_stack((states,actions))
+            # inputs = torch.tensor(inputs, dtype=torch.float32)
+            inputs = torch.tensor(np.array(states), dtype=torch.float32)
 
             # Calculate the simulated Q value (target), Monte carlo Gt
             # Going backwards, G(t) = gamma * G(t+1) + r(t), with G(T)=r(T)
@@ -88,13 +116,13 @@ class TrainedAgent:
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
 
             # value function: # calculate the approximated Q(s,a) = NN(input)
-            Q_approx = criticNN(inputs).squeeze()
+            V_approx = criticNN(inputs).squeeze()
 
-            Q_approxs.append(Q_approx.detach().numpy())
+            V_approxs.append(V_approx.detach().numpy())
             Gts.append(Gt_array) # for debug
 
-        # Gts is the simulated Q(st,at) values for each agent
-        return Gts, Q_approxs
+        # Gts is the simulated Q(st,at) values for each agent. Q(s,a)-V(s) ~= Gt-V(st) = A(s,a)
+        return Gts, V_approxs
 
 class SACAgents:
 
@@ -230,7 +258,7 @@ class SACAgents:
     def benchmark_cirtic(self, buffers: deque, only_one_NN = False):
 
         Gts = deque() # for debug, delete after
-        Q_approxs = deque() # for debug, delete after
+        V_approxs = deque() # for debug, delete after
         criticNN= self.criticsNN[0]
 
         for i in range(self.n_agents):
@@ -258,13 +286,13 @@ class SACAgents:
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
 
             # value function: # calculate the approximated Q(s,a) ~= Gt = V(s) + A(s,a) => Gt-V(s) = A(s,a)
-            # Q_approx = criticNN(inputs).squeeze()
-            # Q_approxs.append(Q_approx.detach().numpy())
-            Q_approxs.append(Gt_array)
+            V_approx = criticNN(inputs).squeeze()
+            V_approxs.append(V_approx.detach().numpy())
+            # Q_approxs.append(Gt_array)
             Gts.append(Gt_array) # for debug
 
-        # Gts is the simulated Q(st,at) values for each agent
-        return Gts, Q_approxs
+        # Gts is the simulated Q(st,at) values for each agent. Q(s,a)-V(s) ~= Gt-V(st) = A(s,a)
+        return Gts, V_approxs
 
     def save(self,filename = "network"):
         folder ="models"

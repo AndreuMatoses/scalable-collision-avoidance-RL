@@ -1,11 +1,10 @@
 from collections import deque, namedtuple
-from zlib import Z_PARTIAL_FLUSH
 import numpy as np
 import matplotlib.pyplot as plt
 import drone_env
 from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
-from SAC_agents import *
+from SA2C_agents import *
 
 plt.style.use('seaborn-dark-palette')
 tex_fonts = {
@@ -25,15 +24,16 @@ plt.rcParams.update(tex_fonts)
 
 
 ### Set up parameters ###
-n_agents = 3
+n_agents = 5
 deltas = np.ones(n_agents)*1
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 3000  
+N_Episodes = 1500  
 plot_last = 1
+save_name = "n5_E1500_Advantage"
 
 # T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
@@ -114,7 +114,7 @@ for episode in EPISODES:
     gi_per_episode[episode,:] = np.array(current_gi_norms)
 
     if episode >= N_Episodes-plot_last:
-        Q_simulated, Q_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
+        Q_simulated, V_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
 
     # print(f"Episode collisions = {total_episode_collisions}")
     # env.animate(trajectory,frame_time=0.1)
@@ -132,18 +132,18 @@ for episode in EPISODES:
 
     if episode >= N_Episodes-plot_last:
         env.plot(trajectory)
-        env.animate(trajectory, z_trajectory, deltas, name="test-3000", format="mp4")
+        env.animate(trajectory, z_trajectory, deltas, name="test", format="mp4")
         times = np.arange(0, t_iter)*drone_env.dt
         plt.figure()
         for i in range(env.n_agents):
             agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
-            plt.plot(times,Q_approx[i], label=f"i={i}, approx Q")
-            plt.plot(times,Q_simulated[i], "--", label=f"i={i}, simulated Q")
+            plt.plot(times,Q_simulated[i], label=f"i={i}, simulated Q (Gt)", color = agent_color)
+            plt.plot(times,V_approx[i],"--" , label=f"i={i}, approx V", color = tuple(0.9*x for x in agent_color))
             print(f"Agent {i} params = {agents.actors[i].parameters}")
         plt.legend()
         plt.show()
 
-agents.save(filename="trained-3000")
+agents.save(filename=save_name)
 
 plot_rewards(total_reward_per_episode,total_collisions_per_episode, n_ep_running_average=50)
 # plt.savefig("images/reward_training.pdf",format='pdf', bbox_inches='tight')

@@ -1,35 +1,36 @@
-
 from collections import deque, namedtuple
 import numpy as np
 import matplotlib.pyplot as plt
 import drone_env
-from drone_env import running_average, plot_rewards
+from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
-from SAC_agents import SACAgents, ExperienceBuffers, TrainedAgent
+from SA2C_agents import *
 
 ### Set up parameters ###
 n_agents = 5
-deltas = np.ones(n_agents)*2
-env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=None ,simplify_zstate = True)
+deltas = np.ones(n_agents)*1
+env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
+
 print(env)
 # env.show()
 
-N_Episodes = 50
+N_Episodes = 300
+plot_last = 2
 
-T = 4 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
+T = 10 # Simulate for T seconds (default dt = drone_env.dt = 0.01s) t_iter t=500
 
 ### 
 
 # Initialize variables
 total_collisions_list = deque()
 total_reward_list = deque()
-mean_critic_error = np.zeros([env.n_agents, N_Episodes])
-Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
+mean_advantage = np.zeros([env.n_agents, N_Episodes])
+# Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
 
 times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 
-agents = TrainedAgent(file_name="Q_test-critics.pth", n_agents=env.n_agents)
+agents = TrainedAgent(critics_name="n5_E1500_Advantage-critics.pth", actors_name="n5_E1500_Advantage-actors.pth", n_agents=env.n_agents)
 print("### Running Trained agent (no learning)")
 print(f"Episodes = {N_Episodes}, Time iterations = {len(times)} (T = {T}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}")
@@ -38,6 +39,7 @@ for episode in EPISODES:
 
     # reward_history = np.zeros([len(times), env.n_agents])
     trajectory = [env.state.copy()]
+    z_trajectory = [env.z_states]
     total_episode_reward = 0
     total_episode_collisions = 0
     # env.show()
@@ -51,19 +53,23 @@ for episode in EPISODES:
         Ni = env.Ni
 
         # calculate actions based on current state
-        actions = drone_env.gradient_control(state, env)
+        # actions = drone_env.gradient_control(state, env)
         # actions = drone_env.proportional_control(state, env)
+        actions = agents.forward(z_states, Ni)
 
         # Update environment one time step with the actions
         new_state, new_z, rewards, n_collisions, finished = env.step(actions)
         # EXPERIECE: [z_state, action, reward, next_z, finished]
-        buffers.append(z_states, actions, rewards,new_z, finished)
+        buffers.append(z_states, actions, rewards,new_z, Ni,finished)
+
 
         total_episode_reward += np.mean(rewards)
         total_episode_collisions += n_collisions
 
         # reward_history[t_iter,:] = reward
         trajectory.append(new_state.copy())
+        z_trajectory.append(new_z)
+
 
     # END OF EPISODE
     # Append episode reward
@@ -71,11 +77,11 @@ for episode in EPISODES:
     total_collisions_list.append(total_episode_collisions)
 
     # Test Critic values
-    Q_simulated, Q_approx = agents.benchmark_cirtic(buffers, only_one_NN=True)
+    Q_simulated, V_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
 
-    critic_error = [np.mean(np.power(Q_simulated[i]-Q_approx[i],2)) for i in range(env.n_agents)]
+    advantage = [np.mean(np.power(Q_simulated[i]-V_approx[i],1)) for i in range(env.n_agents)]
 
-    mean_critic_error[:,episode] = np.array([critic_error])
+    mean_advantage[:,episode] = np.array([advantage])
 
     # print(f"Episode collisions = {total_episode_collisions}")
     # env.animate(trajectory,frame_time=0.1)
@@ -87,29 +93,29 @@ for episode in EPISODES:
     average_reward = running_average(total_reward_list, 50)[-1]
     average_collisions = running_average(total_collisions_list, 50)[-1]
     EPISODES.set_description(
-        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter+1} - Average: {average_reward:.1f}/{average_collisions:.2f}/{t_iter+1}")
+        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter+1} - Average: {average_reward:.1f}/{average_collisions:.2f}/{t_iter}")
 
     # Plot current trajectory
 
-    if episode >= N_Episodes-5:
+    if episode >= N_Episodes-plot_last:
         env.plot(trajectory)
-
+        env.animate(trajectory, z_trajectory, deltas, name=f"bm{N_Episodes-episode}_{agents.actors_name}", format="mp4")
         plt.figure()
         for i in range(env.n_agents):
             agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
-            plt.plot(times,Q_simulated[i], label=f"i={i}, simulated Q", color = agent_color)
-            plt.plot(times,Q_approx[i],"--" , label=f"i={i}, approx Q", color = tuple(0.9*x for x in agent_color))
+            plt.plot(times,Q_simulated[i], label=f"i={i}, simulated Q (Gt)", color = agent_color)
+            plt.plot(times,V_approx[i],"--" , label=f"i={i}, approx V", color = tuple(0.9*x for x in agent_color))
         plt.legend()
         plt.show()
 
-# plot_rewards(total_reward_list,total_collisions_list, n_ep_running_average=5)
+plot_rewards(total_reward_list,total_collisions_list, n_ep_running_average=50)
 
 plt.figure()
 for i in range(env.n_agents):
         agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
-        plt.plot(range(N_Episodes),mean_critic_error[i,:], label=f"i={i}", color = agent_color)
+        plt.plot(range(N_Episodes),mean_advantage[i,:], label=f"i={i}", color = agent_color)
 plt.xlabel("Episodes")
-plt.ylabel("trajectory 1/T * (Q-Qapprox)^2")
+plt.ylabel("trajectory 1/T * [Q(s,a)-V(s)] = mean_T A(s,a)")
 plt.legend()
 plt.grid()
 plt.show()
