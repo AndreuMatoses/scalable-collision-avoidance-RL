@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import drone_env
 from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
-from SA2C_agents import *
+from SAC_agents import SA2CAgents, RandomAgent, TrainedAgent
+from utils import ExperienceBuffers
 
 plt.style.use('seaborn-dark-palette')
 tex_fonts = {
@@ -54,7 +55,7 @@ gi_per_episode = np.zeros_like(grad_per_episode)
 # times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 
 
-agents = SACAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
+agents = SA2CAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
 print("### Running Scalable-Actor-Critic with params: ###")
 print(f"Episodes = {N_Episodes}, max Time iterations = {drone_env.max_time_steps} (T = {drone_env.max_time_steps * drone_env.dt}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")

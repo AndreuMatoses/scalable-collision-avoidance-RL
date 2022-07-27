@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import drone_env
 from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
-from SA2C_agents import *
+from SAC_agents import *
 
 ### Set up parameters ###
 n_agents = 5
