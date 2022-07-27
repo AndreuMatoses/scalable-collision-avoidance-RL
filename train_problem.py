@@ -1,4 +1,5 @@
 from collections import deque, namedtuple
+from zlib import Z_PARTIAL_FLUSH
 import numpy as np
 import matplotlib.pyplot as plt
 import drone_env
@@ -25,13 +26,14 @@ plt.rcParams.update(tex_fonts)
 
 ### Set up parameters ###
 n_agents = 3
-deltas = np.ones(n_agents)*1.5
+deltas = np.ones(n_agents)*1
+# deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 1000  
-plot_last = 2
+N_Episodes = 3000  
+plot_last = 1
 
 # T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
@@ -54,7 +56,7 @@ gi_per_episode = np.zeros_like(grad_per_episode)
 
 agents = SACAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
 print("### Running Scalable-Actor-Critic with params: ###")
-print(f"Episodes = {N_Episodes}, max Time iterations = {200} (T = {10}s, dt = {drone_env.dt}s)")
+print(f"Episodes = {N_Episodes}, max Time iterations = {drone_env.max_time_steps} (T = {drone_env.max_time_steps * drone_env.dt}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")
 print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr for actor  = {alpha_actor}, epochs M = {M}")
 
@@ -64,6 +66,7 @@ for episode in EPISODES:
     if episode >= N_Episodes-plot_last:
         # reward_history = np.zeros([len(times), env.n_agents])
         trajectory = [env.state.copy()]
+        z_trajectory = [env.z_states]
     total_episode_reward = 0
     total_episode_collisions = 0
     # env.show()
@@ -96,6 +99,7 @@ for episode in EPISODES:
         if episode >= N_Episodes-plot_last:
             # reward_history[t_iter,:] = reward
             trajectory.append(new_state.copy())
+            z_trajectory.append(new_z)
         
         t_iter +=1
 
@@ -128,6 +132,7 @@ for episode in EPISODES:
 
     if episode >= N_Episodes-plot_last:
         env.plot(trajectory)
+        env.animate(trajectory, z_trajectory, deltas, name="test-3000", format="mp4")
         times = np.arange(0, t_iter)*drone_env.dt
         plt.figure()
         for i in range(env.n_agents):
@@ -138,7 +143,7 @@ for episode in EPISODES:
         plt.legend()
         plt.show()
 
-agents.save(filename="trained")
+agents.save(filename="trained-3000")
 
 plot_rewards(total_reward_per_episode,total_collisions_per_episode, n_ep_running_average=50)
 # plt.savefig("images/reward_training.pdf",format='pdf', bbox_inches='tight')

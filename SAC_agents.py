@@ -1,5 +1,3 @@
-
-from enum import auto
 import os
 import numpy as np
 from autograd import numpy as anp
@@ -114,7 +112,7 @@ class SACAgents:
         self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
         self.learning_rate_actor = learning_rate_actor
 
-        # List of NN that estimate Q
+        # List of NN that estimate Q (or V if we use advantage)
         # self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
         self.criticsNN = [CriticNN(dim_local_state, output_size=1) for i in range(n_agents)]
         self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
@@ -149,10 +147,10 @@ class SACAgents:
             buffer = buffers.buffers[i]
             states, actions, rewards, new_states, Ni, finished = zip(*buffer)
 
-            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]
-            inputs = np.column_stack((states,actions))
-            inputs = torch.tensor(inputs, dtype=torch.float32)
-            # inputs = torch.tensor(np.array(states), dtype=torch.float32)
+            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]. If instead V(s), input = [s]
+            # inputs = np.column_stack((states,actions))
+            # inputs = torch.tensor(inputs, dtype=torch.float32)
+            inputs = torch.tensor(np.array(states), dtype=torch.float32)
 
             # Calculate the simulated Q value (target), Monte carlo Gt
             # Going backwards, G(t) = gamma * G(t+1) + r(t), with G(T)=r(T)
@@ -165,19 +163,19 @@ class SACAgents:
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
             Gts.append(Gt_array) # for debug
 
-            # ### Perfrom omega (critic) update:
-            # # Set gradient to zero
-            # critic_optimizer.zero_grad()
-            # # value function: # calculate the approximated V(s) = NN(input)
-            # V_approx = criticNN(inputs).squeeze()
-            # # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
-            # loss = nn.functional.mse_loss(V_approx, Gt)
-            # # Compute gradient
-            # loss.backward()
-            # # Clip gradient norm to avoid infinite gradient
-            # nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
-            # # Update
-            # critic_optimizer.step()
+            ### Perfrom omega (critic) update:
+            # Set gradient to zero
+            critic_optimizer.zero_grad()
+            # value function: # calculate the approximated V(s) = NN(input)
+            V_approx = criticNN(inputs).squeeze()
+            # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
+            loss = nn.functional.mse_loss(V_approx, Gt)
+            # Compute gradient
+            loss.backward()
+            # Clip gradient norm to avoid infinite gradient
+            nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+            # Update
+            critic_optimizer.step()
         
         # ACTOR LOOP
         grad_norms = []
@@ -194,24 +192,26 @@ class SACAgents:
                 Nit = buffers.buffers[i][t].Ni
                 
                 grad_actor = actor.compute_grad(zit,ait, Nit)
-                # PUT Ni HERE INSTEAD of [1,2,3]
+                # PUT Nit HERE INSTEAD of [1,2,3]
                 # grad_actor = actor.clip_grad_norm(grad_actor,clip_norm=100)
 
-                Qj_sum = 0
-                # input_tensor =  torch.tensor(zit, dtype=torch.float32)
-                # Vi = self.criticsNN[i](input_tensor).detach().numpy()[0]
-                for j in Nit: # REMOVE THE [0]
+                # Qj_sum = 0
+                Advantage_j_sum = 0
+                input_tensor =  torch.tensor(zit, dtype=torch.float32)
+                # Baseline is the Vi(s) for current agent. reduce variance and complexity
+                Vi_baseline = self.criticsNN[i](input_tensor).detach().numpy()[0]
+                for j in Nit: # i included here
                     zjt = buffers.buffers[j][t].z_state
                     ajt = buffers.buffers[j][t].action
                     # Q_input_tensor =  torch.tensor(np.hstack((zjt,ajt)), dtype=torch.float32)
                     # Qj = self.criticsNN[j](Q_input_tensor).detach().numpy()[0]
                     # input_tensor =  torch.tensor(zjt, dtype=torch.float32)
                     # Vj = self.criticsNN[j](input_tensor).detach().numpy()[0]
-                    # Advantage_j_sum += (Gts[j][t] - Vi)
-                    Qj_sum += Gts[j][t]
+                    Advantage_j_sum += (Gts[j][t] - Vi_baseline)
+                    # Qj_sum += Gts[j][t]
 
-                gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
-                # gi += self.discount**t * 1/self.n_agents* grad_actor * Advantage_j_sum
+                # gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
+                gi += self.discount**t * 1/self.n_agents* grad_actor * Advantage_j_sum
 
             # Update policy parameters with approx gradient gi (clipped to avoid infinity gradients)
             gi = actor.clip_grad_norm(gi, clip_norm=100)
@@ -337,7 +337,7 @@ class NormalPolicy:
         self.z_dim = input_size
 
         # param =anp.array([-1.6,-1.6,-1.6])
-        param =-anp.ones(int(self.z_dim/self.dim))*2
+        param =-anp.ones(int(self.z_dim/self.dim))*0
 
         self.parameters = param
         if Sigma is None:
@@ -417,6 +417,8 @@ class NormalPolicy:
         # Clip the action to not have infinite action
         return np.clip(a,-2,+2)
         
+class NNpolicy:
+    pass
 
 class ExperienceBuffers:
     """ List of buffers for each agent.

@@ -1,5 +1,6 @@
 
 import math
+import os
 import random
 import time
 from distutils.log import error
@@ -12,14 +13,11 @@ from IPython import display
 ### TO DO ############
 """
 - Change back from not using Critic NN in training(),benchmark_critic()SACAgent (now trying Gt)
-- TrainedAgnet for the actor loading
-- check what happens to gradients
-- Add proper "finished in step()
-- Remove the fixed Ni=[1,2,3] in train/compute_grad()
-- Remove fixed random seed to initialize agents
+- TrainedAgent for the actor loading
+- Add collisions to the animation. Add action arrows to animation?
+- (inactive now) Remove fixed random seed to initialize agents
 - 
 - Plot of the Q function field for a fixed kth satates (varying xi)
-- Proper animation
 - Maybe clip the reward for near collision distances
 """
 ######################
@@ -28,6 +26,7 @@ from IPython import display
 dim = 2 
 # time step in seconds
 dt = 0.05
+max_time_steps = 200
 # Some colours
 LIGHT_RED    = '#FFC4CC';
 LIGHT_GREEN  = '#95FD99';
@@ -246,7 +245,7 @@ class drones:
         end_points = np.reshape(self.end_points,np.shape(self.state[:,0:dim]))
         error_from_end = np.linalg.norm(end_points-self.state[:,0:dim],axis = 1)
 
-        if np.all(error_from_end <=0.2) or self.internal_t>=200-1:
+        if np.all(error_from_end <=0.2) or self.internal_t>= max_time_steps-1:
             finished = True
         else:
             finished = False
@@ -430,7 +429,7 @@ class drones:
         else:
             return fig;
 
-    def animate(self, trajectory,frame_time = 0.2, frames = 20):
+    def animate_basic(self, trajectory,frame_time = 0.2, frames = 20):
 
         good_frame = 0
         each_frame = len(trajectory)/frames
@@ -505,6 +504,98 @@ class drones:
 
         ax.legend()
         plt.show()
+    
+    def animate(self, trajectory, z_trajectory , deltas, name = "test", format ="gif"):
+
+        if format == "mp4":
+            plt.rcParams['animation.ffmpeg_path'] ='D:\\Programes portables\\ffmpeg\\bin\\ffmpeg.exe'
+
+        fig, ax = plt.subplots(); # note we must use plt.subplots, not plt.subplot
+        ax.set_xlim((-1, self.grid[0]+1));
+        ax.set_ylim((-1, self.grid[1]+1));
+        # ax.grid(True)
+        ax.set_title(f"Delta = {deltas[0]}");
+        circles = []
+        d_circles = []
+        arrows = []
+
+        states = trajectory[0]
+        z_states = z_trajectory[0]
+        for i in range(self.n_agents):
+            xi = states[i,0:dim]
+            xFi = self.end_points[i*dim:(i+1)*dim,0].flatten()
+            agent_color = num_to_rgb(i,self.n_agents-1)
+            ax.plot(xFi[0],xFi[1],color=agent_color,marker = "*");
+            circle = plt.Circle((states[i,0], states[i,1]), states[i,4], color=agent_color, fill=False, label=f"{i+1}");
+            circles.append(ax.add_patch(circle))
+            
+            delta_circle = plt.Circle((states[i,0], states[i,1]), states[i,4] + deltas[i], color="red", fill=False, ls = "--", alpha = 0.5);
+            d_circles.append(ax.add_patch(delta_circle))
+
+            z_size = np.size(z_states[i],0)
+            z_state = z_states[i]
+            arrows_i = []
+            for k in range(z_size):
+                if k == 0:
+                    star = xFi[0:dim]
+                    fini = xFi[0:dim] + z_state[k,0:dim]
+                    coords = np.array([star,fini])
+                    arrows_i.append(ax.plot(coords[:,0], coords[:,1] , color = agent_color, lw = 0.5, alpha = 0.2))
+                else:
+                    star = xi[0:dim]
+                    fini = xi[0:dim] + z_state[k,0:dim]
+                    coords = np.array([star,fini])
+                    arrows_i.append(ax.plot(coords[:,0], coords[:,1] , color = agent_color, lw = 0.5, alpha = 0.5))
+            arrows.append(arrows_i)
+
+        plt.legend(loc = "upper right")
+
+        def update_objects(t:int):
+            states = trajectory[t]
+            z_states = z_trajectory[t]
+            ax.set_title(f"Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
+
+            for i in range(self.n_agents):
+                xi = states[i,0:dim]
+                xFi = self.end_points[i*dim:(i+1)*dim,0].flatten()
+                agent_color = num_to_rgb(i,self.n_agents-1)
+
+                z_size = np.size(z_states[i],0)
+                z_state = z_states[i]
+                for k in range(z_size):
+                    if k == 0:
+                        star = xFi[0:dim]
+                        fini = xFi[0:dim] + z_state[k,0:dim]
+                        coords = np.array([star,fini])
+                        arrows[i][k][0].set_data(coords[:,0], coords[:,1])
+                        pass
+                    else:
+                        star = xi[0:dim]
+                        fini = xi[0:dim] + z_state[k,0:dim]
+                        coords = np.array([star,fini])
+                        arrows[i][k][0].set_data(coords[:,0], coords[:,1])
+                        pass
+                circles[i].center = states[i,0], states[i,1]
+                d_circles[i].center = states[i,0], states[i,1]
+
+            return circles, d_circles, arrows
+        
+        print("Saving animation...")
+        anim = animation.FuncAnimation(fig, update_objects, len(trajectory), interval=dt)
+
+        if format == "gif":
+            writergif = animation.PillowWriter(fps=30)
+            full_name = os.path.join("videos", name + ".gif")
+            anim.save(full_name, writer=writergif)
+        elif format == "mp4":
+            FFwriter = animation.FFMpegWriter(fps=30)
+            full_name = os.path.join("videos", name + ".mp4")
+            anim.save(full_name, writer = FFwriter)
+        else:
+            print(f"format{format} not valid")
+
+        print(f"Animation saved as {full_name}")
+
 
 
 # other control functions
