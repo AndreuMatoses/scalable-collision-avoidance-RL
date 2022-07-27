@@ -104,6 +104,8 @@ class NormalActorNN(nn.Module):
 
         # out_1 = mu, out_2 = sigma^2
         return out_1,out_2
+
+        
         
 class NormalPolicy:
     """Policy that uses a multivatriable normal distribution.
