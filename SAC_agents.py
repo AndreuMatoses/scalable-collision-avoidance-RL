@@ -471,5 +471,5 @@ class SPPOAgents:
 
         torch.save(self.criticsNN, os.path.join(folder,cirtic_name))
         print(f'Saved Critic NNs as {cirtic_name}')
-        torch.save(self.actors, os.path.join(folder,actors_name))
+        torch.save(self.actorsNN, os.path.join(folder,actors_name))
         print(f'Saved Actors List as {actors_name}')

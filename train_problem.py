@@ -25,22 +25,22 @@ plt.rcParams.update(tex_fonts)
 
 
 ### Set up parameters ###
-n_agents = 5
+n_agents = 3
 deltas = np.ones(n_agents)*1
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 print(env)
 # env.show()
 
-N_Episodes = 10  
+N_Episodes = 1500  
 plot_last = 1
-save_name = "n5_E1500_Advantage"
+save_name = "basicPPO"
 
 # T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
 alpha_critic = 10**-2
 alpha_actor = 10**-4
-M = 10 # Epochs, i.e steps of the SDG for the cator-critic NN in PPO variant
+M = 10 # Epochs, i.e steps of the SDG for the actor-critic NN in PPO variant
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
 
