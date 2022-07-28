@@ -5,7 +5,7 @@ import drone_env
 from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
 from SAC_agents import SA2CAgents, RandomAgent, TrainedAgent, SPPOAgents
-from utils import ExperienceBuffers
+from utils import ExperienceBuffers, DiscreteSoftmaxNN
 
 plt.style.use('seaborn-dark-palette')
 tex_fonts = {
@@ -25,21 +25,22 @@ plt.rcParams.update(tex_fonts)
 
 
 ### Set up parameters ###
-n_agents = 3
+n_agents = 10
 deltas = np.ones(n_agents)*1
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
+env.collision_weight = 0.2
 print(env)
 # env.show()
 
-N_Episodes = 1500  
-plot_last = 1
-save_name = "basicPPO"
+N_Episodes = 1000  
+episodes_to_plot = [200,500,750,1000]
+save_name = "discrete"
 
 # T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
-alpha_critic = 10**-2
-alpha_actor = 10**-4
+alpha_critic = 10**-3
+alpha_actor = 10**-3
 M = 10 # Epochs, i.e steps of the SDG for the actor-critic NN in PPO variant
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
@@ -55,7 +56,7 @@ gi_per_episode = np.zeros_like(grad_per_episode)
 # times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 
 
-agents = SPPOAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
+agents = SA2CAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
 print(f"### Running Scalable-Actor-Critic: {type(agents)} with params: ###")
 print(f"Episodes = {N_Episodes}, max Time iterations = {drone_env.max_time_steps} (T = {drone_env.max_time_steps * drone_env.dt}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")
@@ -64,7 +65,7 @@ print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr f
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 for episode in EPISODES:
 
-    if episode >= N_Episodes-plot_last:
+    if episode+1 in episodes_to_plot:
         # reward_history = np.zeros([len(times), env.n_agents])
         trajectory = [env.state.copy()]
         z_trajectory = [env.z_states]
@@ -97,7 +98,7 @@ for episode in EPISODES:
         total_episode_reward += np.mean(rewards)
         total_episode_collisions += n_collisions
 
-        if episode >= N_Episodes-plot_last:
+        if episode+1 in episodes_to_plot:
             # reward_history[t_iter,:] = reward
             trajectory.append(new_state.copy())
             z_trajectory.append(new_z)
@@ -107,7 +108,10 @@ for episode in EPISODES:
     ### END OF EPISODES
     # Train of critic with the data of the episode
     # current_grad_norms, current_gi_norms = agents.train(buffers, actor_lr = alpha_actor, return_grads=True)
-    agents.train(buffers, actor_lr = alpha_actor, return_grads=False)
+    if type(agents.actors[0]) is DiscreteSoftmaxNN:
+        agents.train_NN(buffers, actor_lr = alpha_actor)
+    else:
+        agents.train(buffers, actor_lr = alpha_actor, return_grads=False)
 
     # Append episodic variables/logs
     total_reward_per_episode.append(total_episode_reward)
@@ -115,8 +119,8 @@ for episode in EPISODES:
     # grad_per_episode[episode,:] = np.array(current_grad_norms)
     # gi_per_episode[episode,:] = np.array(current_gi_norms)
 
-    # if episode >= N_Episodes-plot_last:
-    #     Q_simulated, V_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
+    if episode+1 in episodes_to_plot:
+        Q_simulated, V_approx = agents.benchmark_cirtic(buffers, only_one_NN=False)
 
     # print(f"Episode collisions = {total_episode_collisions}")
     # env.animate(trajectory,frame_time=0.1)
@@ -132,18 +136,18 @@ for episode in EPISODES:
 
     # Plot current trajectory
 
-    if episode >= N_Episodes-plot_last:
+    if episode+1 in episodes_to_plot:
         env.plot(trajectory)
-        env.animate(trajectory, z_trajectory, deltas, name="test", format="mp4")
+        env.animate(trajectory, z_trajectory, deltas, name=f"training-E{episode+1}", format="gif")
         times = np.arange(0, t_iter)*drone_env.dt
-        # plt.figure()
-        # for i in range(env.n_agents):
-        #     agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
-        #     plt.plot(times,Q_simulated[i], label=f"i={i}, simulated Q (Gt)", color = agent_color)
-        #     plt.plot(times,V_approx[i],"--" , label=f"i={i}, approx V", color = tuple(0.9*x for x in agent_color))
-        #     print(f"Agent {i} params = {agents.actors[i].parameters}")
-        # plt.legend()
-        # plt.show()
+        plt.figure()
+        for i in range(env.n_agents):
+            agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
+            plt.plot(times,Q_simulated[i], label=f"i={i}, simulated Q (Gt)", color = agent_color)
+            plt.plot(times,V_approx[i],"--" , label=f"i={i}, approx V", color = tuple(0.9*x for x in agent_color))
+            # print(f"Agent {i} params = {agents.actors[i].parameters}")
+        plt.legend()
+        plt.show()
 
 agents.save(filename=save_name)
 

@@ -12,6 +12,7 @@ from IPython import display
 
 ### TO DO ############
 """
+- Put back collision cost b = 
 - Change back from not using Critic NN in training(),benchmark_critic()SACAgent (now trying Gt)
 - TrainedAgent for the actor loading
 - Add collisions to the animation. Add action arrows to animation?
@@ -68,6 +69,7 @@ class drones:
         self.k_closest = k_closest
         self.simplify_zstate = simplify_zstate
         self.internal_t = 0
+        self.collision_weight = 0.2 # Weight of collision cost per unit of time. -r = q|xi-xF|^2 + b log(d_i/d_ij)
 
         # Other geometry parameters
         self.drone_radius = np.ones(n_agents)*0.1 # radius of each drone in m
@@ -103,10 +105,11 @@ class drones:
     def __str__(self):
         print("Grid size: [x_lim, y_lim]\n",self.grid)
         print("State: [x, y, vx, vy, r]\n", self.state)
-        # print(f"z_sattes for k_closest = {self.k_closest}: simplify? {self.simplify_zstate} \n", self.z_states)
+        print(f"z_sattes for k_closest = {self.k_closest}: simplify? {self.simplify_zstate}")
         print("safety distance for each agent:\n", self.d_safety)
         print("Deltas disk radius for each agent: \n", self.deltas)
-        print("Obstacles [x, y, r]:\n",self.obstacles)
+        # print("Obstacles [x, y, r]:\n",self.obstacles)
+        print(f"Collision cost weight (per unit of time) = {self.collision_weight} ")
         return ""
 
     def generate_formation(self,end_formation):
@@ -264,7 +267,7 @@ class drones:
 
         # weights: q|xi-xF|^2 + b log(d_i/d_ij). I multiply per dt as i assume is cost/time
         q = 2*dt
-        b = 0.5*dt
+        b = self.collision_weight*dt
 
         xF = np.reshape(end_points,[n_agents,dim])
         xi = state[:,0:dim]
@@ -580,7 +583,7 @@ class drones:
 
             return circles, d_circles, arrows
         
-        print("Saving animation...")
+        print("\nSaving animation...")
         anim = animation.FuncAnimation(fig, update_objects, len(trajectory), interval=dt)
 
         if format == "gif":

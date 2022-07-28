@@ -2,9 +2,10 @@ import os
 import numpy as np
 from autograd import numpy as anp
 from autograd import grad
+import torch
 # import torch
 import torch.nn as nn
-# import torch.optim as optim
+import torch.optim as optim
 from collections import deque, namedtuple
 
 """  Classes used for agents and other useful functions  """
@@ -58,9 +59,9 @@ class NormalActorNN(nn.Module):
         super().__init__()
 
         # NN sizes: define size of layers
-        Ls = 400
-        hidden_1= 200
-        hidden_2= 200
+        Ls = 200
+        hidden_1= 100
+        hidden_2= 100
 
         # Ls, Create input layer with ReLU activation
         self.input_layer = nn.Linear(input_size, Ls)
@@ -225,3 +226,69 @@ class ExperienceBuffers:
     def __len__(self):
         # overload len operator
         return len(self.buffers[0])
+
+class DiscreteSoftmaxNN(nn.Module):
+    """ NN for a policy that as input takes the z state and outputs 2D means and sigma of a independent normal distributions
+        In this case: z[1x6] -> mu[1x2], sigma^2[1x2]
+        NN for the policy with finite actions, in which the input is the state and the output are softmax probabilities for each of the actions
+    """
+    def __init__(self, input_size, lr , n_actions = 4):
+        super().__init__()
+
+        # Create action dictionary action_arg -> 2D continuos action array
+        action_norm = 1
+        action_list = []
+        for n_action in range(n_actions):
+            ax = np.cos(n_action/n_actions * 2*np.pi)*action_norm
+            ay = np.sin(n_action/n_actions * 2*np.pi)*action_norm
+            action_list.append(np.array([ax,ay]))
+        self.action_list = np.array(action_list)
+
+        # Structure z -> Ls[ReLu] -> hidden1[ReLu] -> out[softmax]
+        Ls = 200
+        hidden_1 = 200
+        self.n_actions = n_actions
+
+        # Ls, Create input layer with ReLU activation
+        self.input_layer = nn.Linear(input_size, Ls)
+        self.input_layer_activation = nn.ReLU()
+        # Create hidden layer, Ls- > head1
+        self.hidden_layer1 = nn.Linear(Ls, hidden_1)
+        self.hidden_layer1_activation = nn.ReLU()
+        # ctreate output layers with softmax -> probabilities
+        self.out_1 = nn.Linear(hidden_1,n_actions)
+        self.out_1_activation = nn.Softmax(dim=0)
+
+        # Use adam optimizer
+        self.optimizer = optim.Adam(self.parameters(), lr = lr)
+
+    def forward(self,z):
+        # Compute first layer
+        l1 = self.input_layer(z)
+        l1 = self.input_layer_activation(l1)
+
+        # Compute hidden layers
+        l2 = self.hidden_layer1(l1)
+        l2 = self.hidden_layer1_activation(l2)
+
+        # Compute output layers
+        out_1 = self.out_1(l2)
+        out_1 = self.out_1_activation(out_1)
+
+        return out_1
+
+    def sample_action(self,z:np.ndarray, N=None):
+        state_tensor = torch.tensor(z, dtype=torch.float32)
+        probs = self.forward(state_tensor)
+        chosen_action_arg = np.random.choice(self.n_actions, p = probs.squeeze().detach().numpy())
+
+        return self.action_list[chosen_action_arg]
+
+    def log_p_of_a(self,z:np.ndarray, a:np.ndarray):
+        # Find argument corresponding to a array
+        action_arg = np.where((self.action_list[:,0] == a[0]) & (self.action_list[:,1]==a[1]))[0][0]
+
+        state_tensor = torch.tensor(z, dtype=torch.float32)
+        probs = self.forward(state_tensor)
+        log_prob = torch.log(probs.squeeze()[action_arg])
+        return log_prob
