@@ -5,7 +5,7 @@ import drone_env
 from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
 from SAC_agents import SA2CAgents, RandomAgent, TrainedAgent, SPPOAgents
-from utils import ExperienceBuffers, DiscreteSoftmaxNN
+from utils import ExperienceBuffers, DiscreteSoftmaxNN, NormalPolicy
 
 plt.style.use('seaborn-dark-palette')
 tex_fonts = {
@@ -25,17 +25,17 @@ plt.rcParams.update(tex_fonts)
 
 
 ### Set up parameters ###
-n_agents = 10
+n_agents = 5
 deltas = np.ones(n_agents)*1
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
-env.collision_weight = 0.2
+env.collision_weight = 0.0
 print(env)
 # env.show()
 
 N_Episodes = 1000  
-episodes_to_plot = [200,500,750,1000]
-save_name = "discrete"
+episodes_to_plot = [1000]
+save_name = "normal"
 
 # T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
@@ -108,10 +108,10 @@ for episode in EPISODES:
     ### END OF EPISODES
     # Train of critic with the data of the episode
     # current_grad_norms, current_gi_norms = agents.train(buffers, actor_lr = alpha_actor, return_grads=True)
-    if type(agents.actors[0]) is DiscreteSoftmaxNN:
-        agents.train_NN(buffers, actor_lr = alpha_actor)
+    if type(agents.actors[0]) is NormalPolicy:
+        agents.train_designed_policy(buffers, actor_lr = alpha_actor, return_grads=False)
     else:
-        agents.train(buffers, actor_lr = alpha_actor, return_grads=False)
+        agents.train_NN(buffers, actor_lr = alpha_actor)
 
     # Append episodic variables/logs
     total_reward_per_episode.append(total_episode_reward)
@@ -138,7 +138,7 @@ for episode in EPISODES:
 
     if episode+1 in episodes_to_plot:
         env.plot(trajectory)
-        env.animate(trajectory, z_trajectory, deltas, name=f"training-E{episode+1}", format="gif")
+        env.animate(trajectory, z_trajectory, deltas, name=f"training-E{episode+1}", format="mp4")
         times = np.arange(0, t_iter)*drone_env.dt
         plt.figure()
         for i in range(env.n_agents):

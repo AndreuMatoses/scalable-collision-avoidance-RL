@@ -1,4 +1,5 @@
 import os
+from turtle import forward
 import numpy as np
 from autograd import numpy as anp
 from autograd import grad
@@ -55,13 +56,14 @@ class NormalActorNN(nn.Module):
     """ NN for a policy that as input takes the z state and outputs 2D means and sigma of a independent normal distributions
         In this case: z[1x6] -> mu[1x2], sigma^2[1x2]
     """
-    def __init__(self, input_size, dim_action):
+    def __init__(self, input_size, lr ,dim_action):
         super().__init__()
 
+        self.dim_action = dim_action
         # NN sizes: define size of layers
-        Ls = 200
-        hidden_1= 100
-        hidden_2= 100
+        Ls = 400
+        hidden_1= 200
+        hidden_2= 200
 
         # Ls, Create input layer with ReLU activation
         self.input_layer = nn.Linear(input_size, Ls)
@@ -80,6 +82,8 @@ class NormalActorNN(nn.Module):
         self.out_2 = nn.Linear(hidden_2,dim_action)
         self.out_2_activation = nn.Sigmoid()
 
+        # Use adam optimizer
+        self.optimizer = optim.Adam(self.parameters(), lr = lr)
 
     def forward(self, z):
         # Compute first layer
@@ -103,6 +107,27 @@ class NormalActorNN(nn.Module):
         # out_1 = mu, out_2 = sigma^2
         return out_1,out_2
 
+    def sample_action(self,z:np.ndarray, N=None):
+        state_tensor = torch.tensor(z, dtype=torch.float32)
+        mu_tensor,sigma_tensor = self.forward(state_tensor)
+        # Normally distributed value with the mu and sigma (std^2) from ActorNN
+        std = np.sqrt(sigma_tensor.detach().numpy())
+        action = np.random.normal(mu_tensor.detach().numpy(),std)
+        # action = np.clip(action,-1,1)
+        return action
+
+    def log_p_of_a(self,z:np.ndarray, a:np.ndarray):
+        state_tensor = torch.tensor(z, dtype=torch.float32)
+        mu , sigma = self.forward(state_tensor)
+        if mu.dim() == 1:
+            p1 = torch.pow(2 * np.pi * sigma[0], -0.5) * torch.exp(-(a[0] - mu[0])**2 / (2 * sigma[0]))
+            p2 = torch.pow(2 * np.pi * sigma[1], -0.5) * torch.exp(-(a[1] - mu[1])**2 / (2 * sigma[1]))
+        else:
+            p1 = torch.pow(2 * np.pi * sigma[:,0], -0.5) * torch.exp(-(a[:,0] - mu[:,0])**2 / (2 * sigma[:,0]))
+            p2 = torch.pow(2 * np.pi * sigma[:,1], -0.5) * torch.exp(-(a[:,1] - mu[:,1])**2 / (2 * sigma[:,1]))
+        
+        p = p1*p2
+        return torch.log(p)
         
 class NormalPolicy:
     """Policy that uses a multivatriable normal distribution.

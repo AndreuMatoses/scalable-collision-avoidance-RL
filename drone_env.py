@@ -511,7 +511,9 @@ class drones:
     def animate(self, trajectory, z_trajectory , deltas, name = "test", format ="gif"):
 
         if format == "mp4":
-            plt.rcParams['animation.ffmpeg_path'] ='D:\\Programes portables\\ffmpeg\\bin\\ffmpeg.exe'
+            # plt.rcParams['animation.ffmpeg_path'] ='D:\\Programes portables\\ffmpeg\\bin\\ffmpeg.exe'
+            plt.rcParams['animation.ffmpeg_path'] ='C:\\Users\\Andreu\\OneDrive - KTH\\programes\\ffmpeg\\bin\\ffmpeg.exe'
+
 
         fig, ax = plt.subplots(); # note we must use plt.subplots, not plt.subplot
         ax.set_xlim((-1, self.grid[0]+1));

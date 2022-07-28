@@ -137,7 +137,8 @@ class SA2CAgents:
 
         # Define policy (actor)
         # self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
-        self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor) for i in range(n_agents)]
+        # self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor) for i in range(n_agents)]
+        self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
         self.learning_rate_actor = learning_rate_actor
 
         # List of NN that estimate Q (or V if we use advantage)
@@ -157,7 +158,7 @@ class SA2CAgents:
 
         return actions
 
-    def train(self, buffers: deque, actor_lr = None, return_grads = False):
+    def train_designed_policy(self, buffers: deque, actor_lr = None, return_grads = False):
         epochs = self.epochs
 
         if actor_lr is not None:
@@ -287,19 +288,19 @@ class SA2CAgents:
             Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
             Gts.append(Gt_array) # for debug
 
-            ### Perfrom omega (critic) update:
+            ## Perfrom omega (critic) update:
             # Set gradient to zero
-            # critic_optimizer.zero_grad()
-            # # value function: # calculate the approximated V(s) = NN(input)
-            # V_approx = criticNN(inputs).squeeze()
-            # # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
-            # loss = nn.functional.mse_loss(V_approx, Gt)
-            # # Compute gradient
-            # loss.backward()
-            # # Clip gradient norm to avoid infinite gradient
-            # nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
-            # # Update
-            # critic_optimizer.step()
+            critic_optimizer.zero_grad()
+            # value function: # calculate the approximated V(s) = NN(input)
+            V_approx = criticNN(inputs).squeeze()
+            # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
+            loss = nn.functional.mse_loss(V_approx, Gt)
+            # Compute gradient
+            loss.backward()
+            # Clip gradient norm to avoid infinite gradient
+            nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+            # Update
+            critic_optimizer.step()
         
         # ACTOR LOOP
         for i in range(self.n_agents):
@@ -321,8 +322,8 @@ class SA2CAgents:
                 Vi_baseline = self.criticsNN[i](input_tensor).detach().numpy()[0]
                 # Advantage_j_sum += (Gts[i][t] - Vi_baseline)
                 for j in Nit: # i included here
-                    # Advantage_j_sum += (Gts[j][t] - Vi_baseline)
-                    Advantage_j_sum += (Gts[j][t])
+                    Advantage_j_sum += (Gts[j][t] - Vi_baseline)
+                    # Advantage_j_sum += (Gts[j][t])
 
                 # gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
                 # actor_loss = actor_loss -  self.discount**t * 1/self.n_agents* log_prob_tensor * Advantage_j_sum
