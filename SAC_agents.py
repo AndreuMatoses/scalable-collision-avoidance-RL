@@ -136,7 +136,8 @@ class SA2CAgents:
         self.epochs = epochs
 
         # Define policy (actor)
-        self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
+        # self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
+        self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor) for i in range(n_agents)]
         self.learning_rate_actor = learning_rate_actor
 
         # List of NN that estimate Q (or V if we use advantage)
@@ -253,6 +254,86 @@ class SA2CAgents:
 
         if return_grads:        
             return grad_norms, gi_norms
+
+    def train_NN(self, buffers: deque, actor_lr = None):
+        epochs = self.epochs
+
+        if actor_lr is not None:
+            self.learning_rate_actor = actor_lr
+
+        Gts = deque() # for debug, delete after -> acces data Gts[i][t]
+        T = len(buffers)
+
+        # CRITIC LOOP
+        for i in range(self.n_agents):
+            # NN for this agent:
+            criticNN = self.criticsNN[i]
+            critic_optimizer = self.critic_optimizers[i]
+
+            # separate data from experience buffer
+            buffer = buffers.buffers[i]
+            states, actions, rewards, new_states, Ni, finished = zip(*buffer)
+
+            # Create input tensor, This one: input = [s,a] tensor -> Q(s,a) [200x8]. If instead V(s), input = [s]
+            inputs = torch.tensor(np.array(states), dtype=torch.float32)
+
+            # Calculate the simulated Q value (target), Monte carlo Gt
+            # Going backwards, G(t) = gamma * G(t+1) + r(t), with G(T)=r(T)
+            Gt_array = np.zeros([T])
+            Gt_array[-1] = rewards[-1]
+            for t in range(T-2,-1,-1):
+                Gt_array[t]  = Gt_array[t+1]*self.discount + rewards[t]
+
+            Gt = torch.tensor(Gt_array, dtype=torch.float32).squeeze()
+            Gts.append(Gt_array) # for debug
+
+            ### Perfrom omega (critic) update:
+            # Set gradient to zero
+            # critic_optimizer.zero_grad()
+            # # value function: # calculate the approximated V(s) = NN(input)
+            # V_approx = criticNN(inputs).squeeze()
+            # # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
+            # loss = nn.functional.mse_loss(V_approx, Gt)
+            # # Compute gradient
+            # loss.backward()
+            # # Clip gradient norm to avoid infinite gradient
+            # nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+            # # Update
+            # critic_optimizer.step()
+        
+        # ACTOR LOOP
+        for i in range(self.n_agents):
+            # to access buffer data: buffers.buffers[i][t].action, namedtuple('experience', ['z_state', 'action', 'reward', 'next_z', 'Ni', 'finished'])
+            # Gt: Gts[i][t]
+            actor = self.actors[i]
+            actor_loss = torch.tensor(0, dtype=torch.float32)
+
+            for t in range(T):
+                zit = buffers.buffers[i][t].z_state
+                ait = buffers.buffers[i][t].action
+                Nit = buffers.buffers[i][t].Ni
+                
+                log_prob_tensor = actor.log_p_of_a(zit,ait)
+
+                Advantage_j_sum = 0
+                input_tensor =  torch.tensor(zit, dtype=torch.float32)
+                # Baseline is the Vi(s) for current agent. reduce variance and complexity
+                Vi_baseline = self.criticsNN[i](input_tensor).detach().numpy()[0]
+                # Advantage_j_sum += (Gts[i][t] - Vi_baseline)
+                for j in Nit: # i included here
+                    # Advantage_j_sum += (Gts[j][t] - Vi_baseline)
+                    Advantage_j_sum += (Gts[j][t])
+
+                # gi += self.discount**t * 1/self.n_agents* grad_actor * Qj_sum
+                # actor_loss = actor_loss -  self.discount**t * 1/self.n_agents* log_prob_tensor * Advantage_j_sum
+                actor_loss = actor_loss -log_prob_tensor * 1/self.n_agents * self.discount**t * Advantage_j_sum
+
+            # Update policy parameters
+            actor.optimizer.zero_grad()
+            actor_loss.backward()
+            nn.utils.clip_grad_norm_(actor.parameters(), max_norm=10)
+            actor.optimizer.step()
+
     
     def benchmark_cirtic(self, buffers: deque, only_one_NN = False):
 
@@ -357,7 +438,7 @@ class SPPOAgents:
         T = len(buffers)
         # Gts = deque() # for debug, delete after -> acces data Gts[i][t]
         Git = np.zeros([self.n_agents, T]) # Git[i,t]
-        advantage_estim = np.zeros([self.n_agents, T]) # advantage_estim[i,t]
+        Qjsum_estim = np.zeros([self.n_agents, T]) # Qjsum_estim[i,t]
         p_old_it = np.zeros([self.n_agents, T]) # p_old_it[i,t]
         
 
@@ -387,15 +468,16 @@ class SPPOAgents:
             # inputs = torch.tensor(np.column_stack((states,actions)), dtype=torch.float32)
             states_tensor = torch.tensor(np.array(states), dtype=torch.float32)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.float32)
-            Vi_baselines = self.criticsNN[i](states_tensor).squeeze().detach().numpy()
            
             p_old_it[i,:] = self.probability_of_ai(states_tensor, actions_tensor, i).detach().numpy()
-            advantage_estim[i,:] = -Vi_baselines
+            Vi_baselines = self.criticsNN[i](states_tensor).squeeze().detach().numpy()
+            # advantage_estim[i,:] = -Vi_baselines
 
             for t in range(T):
                 Nit = buffers.buffers[i][t].Ni
-                for j in Nit: # i included here
-                    advantage_estim[i,t] += Git[j,t]
+                for j in Nit: # i included here, only uses local i
+                    Qjsum_estim[i,t] += Git[j,t]
+
 
         ### Training LOOP, per agent: ###
         for i in range(self.n_agents):
@@ -405,33 +487,37 @@ class SPPOAgents:
             states_tensor = torch.tensor(np.array(states), dtype=torch.float32)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.float32)
 
-            criticNN = self.criticsNN[i]
-            critic_optimizer = self.critic_optimizers[i]
-            actorNN = self.actorsNN[i]
-            actor_optimizer = self.actor_optimizers[i]
+            Vi_baselines = self.criticsNN[i](states_tensor).squeeze()
+            Adv = Qjsum - Vi_baselines
+            Qjsum =  torch.tensor(Qjsum_estim[i,:], dtype=torch.float32)
+
+            # criticNN = self.criticsNN[i]
+            # critic_optimizer = self.critic_optimizers[i]
+            # actorNN = self.actorsNN[i]
+            # actor_optimizer = self.actor_optimizers[i]
 
             # Perform training for epochs
             for m in range(epochs):
 
                 ### CRITIC update:
                 # Set gradient to zero
-                critic_optimizer.zero_grad() 
+                self.critic_optimizers[i].zero_grad() 
                 # value function: # calculate the approximated V(s) = NN(input)
-                V_approx = criticNN(states_tensor).squeeze()
+                V_approx = self.criticsNN[i](states_tensor).squeeze()
                 # Compute MSE loss, as E[Gt-V(s) = A(s,a)] = 0
                 loss = nn.functional.mse_loss(V_approx, Gt)
                 # Compute gradient
                 loss.backward()
                 # Clip gradient norm to avoid infinite gradient
-                nn.utils.clip_grad_norm_(criticNN.parameters(), max_norm=10) 
+                nn.utils.clip_grad_norm_(self.criticsNN[i].parameters(), max_norm=10) 
                 # Update
-                critic_optimizer.step()
+                self.critic_optimizers[i].step()
 
                 ### ACTOR update
                 # Set gradient to zero
-                actor_optimizer.zero_grad()
-                Adv =  torch.tensor(advantage_estim[i,:], dtype=torch.float32)
+                self.actor_optimizers[i].zero_grad()
                 pi_old = torch.tensor(p_old_it[i,:], dtype=torch.float32)
+                # Compute new advantage with updated critic
                 # Compute r_theta ratio of probabilities
                 current_pi = self.probability_of_ai(states_tensor,actions_tensor, i)
                 r_theta = current_pi/pi_old
@@ -442,9 +528,9 @@ class SPPOAgents:
                 # compute gradient
                 loss.backward()
                 # Clip gradient norm to avoid infinite gradient
-                nn.utils.clip_grad_norm_(actorNN.parameters(), max_norm=1) 
+                nn.utils.clip_grad_norm_(self.actorsNN[i].parameters(), max_norm=10) 
                 # Update
-                actor_optimizer.step()
+                self.actor_optimizers[i].step()
 
 
     def probability_of_ai(self,states_i,actions_i, agent:int):
