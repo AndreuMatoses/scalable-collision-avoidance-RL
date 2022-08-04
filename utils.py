@@ -257,7 +257,7 @@ class DiscreteSoftmaxNN(nn.Module):
         In this case: z[1x6] -> mu[1x2], sigma^2[1x2]
         NN for the policy with finite actions, in which the input is the state and the output are softmax probabilities for each of the actions
     """
-    def __init__(self, input_size, lr , n_actions = 4):
+    def __init__(self, input_size, lr , n_actions = 8):
         super().__init__()
 
         # Create action dictionary action_arg -> 2D continuos action array
@@ -270,8 +270,8 @@ class DiscreteSoftmaxNN(nn.Module):
         self.action_list = np.array(action_list)
 
         # Structure z -> Ls[ReLu] -> hidden1[ReLu] -> out[softmax]
-        Ls = 200
-        hidden_1 = 200
+        Ls = 300
+        hidden_1 = 300
         self.n_actions = n_actions
 
         # Ls, Create input layer with ReLU activation

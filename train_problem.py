@@ -29,13 +29,13 @@ n_agents = 5
 deltas = np.ones(n_agents)*1
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
-env.collision_weight = 0.0
+env.collision_weight = 0.2
 print(env)
 # env.show()
 
-N_Episodes = 1000  
-episodes_to_plot = [1000]
-save_name = "normal"
+N_Episodes = 1500  
+episodes_to_plot = [1,500,1000,1500]
+save_name = "softmax8"
 
 # T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
@@ -50,6 +50,7 @@ dim_a = env.local_action_space # Dimension of the local action space
 # Initialize variables
 total_collisions_per_episode = []
 total_reward_per_episode = []
+total_t = []
 grad_per_episode = np.zeros([N_Episodes, n_agents])
 gi_per_episode = np.zeros_like(grad_per_episode)
 
@@ -57,7 +58,7 @@ gi_per_episode = np.zeros_like(grad_per_episode)
 
 
 agents = SA2CAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_action=dim_a, discount=discount_factor, epochs=M, learning_rate_critic=alpha_critic, learning_rate_actor=alpha_critic)
-print(f"### Running Scalable-Actor-Critic: {type(agents)} with params: ###")
+print(f"### Running {type(agents)}, actor: {type(agents.actors[0])} with params: ###")
 print(f"Episodes = {N_Episodes}, max Time iterations = {drone_env.max_time_steps} (T = {drone_env.max_time_steps * drone_env.dt}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")
 print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr for actor  = {alpha_actor}, epochs M = {M}")
@@ -116,6 +117,7 @@ for episode in EPISODES:
     # Append episodic variables/logs
     total_reward_per_episode.append(total_episode_reward)
     total_collisions_per_episode.append(total_episode_collisions)
+    total_t.append(t_iter)
     # grad_per_episode[episode,:] = np.array(current_grad_norms)
     # gi_per_episode[episode,:] = np.array(current_gi_norms)
 
@@ -131,8 +133,9 @@ for episode in EPISODES:
     # Set progress bar description with information
     average_reward = running_average(total_reward_per_episode, 50)[-1]
     average_collisions = running_average(total_collisions_per_episode, 50)[-1]
+    average_t = running_average(total_t, 50)[-1]
     EPISODES.set_description(
-        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{t_iter}")
+        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{average_t}")
 
     # Plot current trajectory
 

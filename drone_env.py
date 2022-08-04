@@ -545,12 +545,12 @@ class drones:
                     star = xFi[0:dim]
                     fini = xFi[0:dim] + z_state[k,0:dim]
                     coords = np.array([star,fini])
-                    arrows_i.append(ax.plot(coords[:,0], coords[:,1] , color = agent_color, lw = 0.5, alpha = 0.2))
+                    arrows_i.append(ax.plot(coords[:,0], coords[:,1] , color = agent_color, lw = 0.5, alpha = 0.3))
                 else:
                     star = xi[0:dim]
                     fini = xi[0:dim] + z_state[k,0:dim]
                     coords = np.array([star,fini])
-                    arrows_i.append(ax.plot(coords[:,0], coords[:,1] , color = agent_color, lw = 0.5, alpha = 0.5))
+                    arrows_i.append(ax.plot(coords[:,0], coords[:,1] , color = agent_color, lw = 0.5, alpha = 0.6))
             arrows.append(arrows_i)
 
         plt.legend(loc = "upper right")
@@ -558,7 +558,7 @@ class drones:
         def update_objects(t:int):
             states = trajectory[t]
             z_states = z_trajectory[t]
-            ax.set_title(f"Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
+            ax.set_title(f"Episode {} .Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
 
             for i in range(self.n_agents):
                 xi = states[i,0:dim]
@@ -690,7 +690,7 @@ def plot_rewards(episode_reward_list, collision_list, n_ep_running_average=50):
     # Plot Rewards and steps
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 9))
     ax[0].plot([i for i in range(1, len(episode_reward_list)+1)],
-               episode_reward_list, label='Episode reward')
+               episode_reward_list, label='Episode reward', alpha = 0.6)
     ax[0].plot([i for i in range(1, len(episode_reward_list)+1)], running_average(
         episode_reward_list, n_ep_running_average), label='Avg. episode reward')
     ax[0].set_xlabel('Episodes')
@@ -700,7 +700,7 @@ def plot_rewards(episode_reward_list, collision_list, n_ep_running_average=50):
     ax[0].grid(alpha=0.3)
 
     ax[1].plot([i for i in range(1, len(episode_reward_list)+1)],
-               collision_list, label='Collisions per episode')
+               collision_list, label='Collisions per episode', alpha = 0.6)
     ax[1].plot([i for i in range(1, len(episode_reward_list)+1)], running_average(
         collision_list, n_ep_running_average), label='Avg. number of collisions per episode')
     ax[1].set_xlabel('Episodes')

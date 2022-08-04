@@ -137,8 +137,8 @@ class SA2CAgents:
 
         # Define policy (actor)
         # self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
-        # self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor) for i in range(n_agents)]
-        self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
+        self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor) for i in range(n_agents)]
+        # self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
         self.learning_rate_actor = learning_rate_actor
 
         # List of NN that estimate Q (or V if we use advantage)
