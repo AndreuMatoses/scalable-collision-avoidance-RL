@@ -508,7 +508,7 @@ class drones:
         ax.legend()
         plt.show()
     
-    def animate(self, trajectory, z_trajectory , deltas, name = "test", format ="gif"):
+    def animate(self, trajectory, z_trajectory , deltas, episode, name = "test", format ="gif"):
 
         if format == "mp4":
             # plt.rcParams['animation.ffmpeg_path'] ='D:\\Programes portables\\ffmpeg\\bin\\ffmpeg.exe'
@@ -558,7 +558,7 @@ class drones:
         def update_objects(t:int):
             states = trajectory[t]
             z_states = z_trajectory[t]
-            ax.set_title(f"Episode {} .Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
+            ax.set_title(f"Episode {episode} .Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
 
             for i in range(self.n_agents):
                 xi = states[i,0:dim]

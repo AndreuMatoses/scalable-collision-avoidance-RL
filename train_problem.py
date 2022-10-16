@@ -141,7 +141,7 @@ for episode in EPISODES:
 
     if episode+1 in episodes_to_plot:
         env.plot(trajectory)
-        env.animate(trajectory, z_trajectory, deltas, name=f"training-E{episode+1}", format="mp4")
+        env.animate(trajectory, z_trajectory, deltas, episode, name=f"training-E{episode+1}", format="mp4")
         times = np.arange(0, t_iter)*drone_env.dt
         plt.figure()
         for i in range(env.n_agents):
