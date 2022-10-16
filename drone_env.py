@@ -205,7 +205,7 @@ class drones:
         state[:,0:dim] = random_coord
 
         # Calculate localized states z (uing the reward funciton)
-        _, _, z_states, Ni = self.rewards(state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+        _, _, z_states, Ni, _ = self.rewards(state, self.end_points, self.n_agents, self.d_safety, self.deltas)
         # Update the Ni graph
         self.Ni = Ni
 
@@ -239,7 +239,7 @@ class drones:
 
 
         # Calculate new individual reward [r1(s,a), r2,...] vector, plus related distance dependent values
-        r_vec, n_collisions, z_states, Ni = self.rewards(self.state, self.end_points, self.n_agents, self.d_safety, self.deltas)
+        r_vec, n_collisions, z_states, Ni, true_r_vec = self.rewards(self.state, self.end_points, self.n_agents, self.d_safety, self.deltas)
         # Update the z and Ni graph
         self.z_states = z_states
         self.Ni = Ni
@@ -255,7 +255,7 @@ class drones:
 
         self.internal_t += 1
         # TO DO: Proper is_finished
-        return self.state, z_states, r_vec, n_collisions, finished
+        return self.state, z_states, r_vec, n_collisions, finished, true_r_vec
 
     def rewards(self, state, end_points, n_agents, d_safety, deltas):
         '''
@@ -289,7 +289,7 @@ class drones:
         # Calculate localized z states
         z_states, Ni = self.localized_states(state, end_points, N_delta, d_ij)
 
-        return reward_vector, n_collisions, z_states, Ni
+        return reward_vector, n_collisions, z_states, Ni, real_collision_cost
 
     def distance_data(self,state,deltas,d_safety):
         '''Return matrix of clipped distances matrix d[ij]
@@ -686,23 +686,23 @@ def running_average(x, N = 50):
     return y
 
 # Plot Rewards and steps
-def plot_rewards(episode_reward_list, collision_list, n_ep_running_average=50):
+def plot_rewards(episode_reward_list, episode_true_reward_list, collision_list, n_ep_running_average=50):
+    episodes = [i for i in range(1, len(episode_reward_list)+1)]
     # Plot Rewards and steps
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 9))
-    ax[0].plot([i for i in range(1, len(episode_reward_list)+1)],
-               episode_reward_list, label='Episode reward', alpha = 0.6)
-    ax[0].plot([i for i in range(1, len(episode_reward_list)+1)], running_average(
-        episode_reward_list, n_ep_running_average), label='Avg. episode reward')
+    ax[0].plot(episodes, episode_reward_list, label='Approx. reward', color = "orange", alpha = 0.5)
+    ax[0].plot(episodes, episode_reward_list, label='Global reward', color = "cyan", alpha = 0.5)
+    ax[0].plot(episodes, running_average(episode_reward_list, n_ep_running_average), label='Avg. approx. reward', color="red")
+    ax[0].plot(episodes, running_average(episode_true_reward_list, n_ep_running_average), label='Avg. global reward', color="blue")
+
     ax[0].set_xlabel('Episodes')
     ax[0].set_ylabel('Total reward')
     ax[0].set_title('Total Reward vs Episodes')
     ax[0].legend()
     ax[0].grid(alpha=0.3)
 
-    ax[1].plot([i for i in range(1, len(episode_reward_list)+1)],
-               collision_list, label='Collisions per episode', alpha = 0.6)
-    ax[1].plot([i for i in range(1, len(episode_reward_list)+1)], running_average(
-        collision_list, n_ep_running_average), label='Avg. number of collisions per episode')
+    ax[1].plot(episodes,collision_list, label='Collisions per episode', alpha = 0.5)
+    ax[1].plot(episodes, running_average(collision_list, n_ep_running_average), label='Avg. number of collisions per episode')
     ax[1].set_xlabel('Episodes')
     ax[1].set_ylabel('Total number of collisions')
     ax[1].set_title('Total number of collisions vs Episodes')

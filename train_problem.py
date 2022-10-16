@@ -50,6 +50,7 @@ dim_a = env.local_action_space # Dimension of the local action space
 # Initialize variables
 total_collisions_per_episode = []
 total_reward_per_episode = []
+total_true_reward_per_episode =[]
 total_t = []
 grad_per_episode = np.zeros([N_Episodes, n_agents])
 gi_per_episode = np.zeros_like(grad_per_episode)
@@ -71,6 +72,7 @@ for episode in EPISODES:
         trajectory = [env.state.copy()]
         z_trajectory = [env.z_states]
     total_episode_reward = 0
+    total_true_episode_reward = 0
     total_episode_collisions = 0
     # env.show()
 
@@ -92,11 +94,12 @@ for episode in EPISODES:
         # actions = agents.forward(z_states, Ni)
 
         # Update environment one time step with the actions
-        new_state, new_z, rewards, n_collisions, finished = env.step(actions)
+        new_state, new_z, rewards, n_collisions, finished, true_rewards = env.step(actions)
         # EXPERIECE: [z_state, action, reward, next_z, finished]
         buffers.append(z_states, actions, rewards,new_z, Ni,finished)
 
         total_episode_reward += np.mean(rewards)
+        total_true_episode_reward += np.mean(true_rewards)
         total_episode_collisions += n_collisions
 
         if episode+1 in episodes_to_plot:
@@ -116,6 +119,7 @@ for episode in EPISODES:
 
     # Append episodic variables/logs
     total_reward_per_episode.append(total_episode_reward)
+    total_true_reward_per_episode.append(total_true_episode_reward)
     total_collisions_per_episode.append(total_episode_collisions)
     total_t.append(t_iter)
     # grad_per_episode[episode,:] = np.array(current_grad_norms)
@@ -132,10 +136,11 @@ for episode in EPISODES:
 
     # Set progress bar description with information
     average_reward = running_average(total_reward_per_episode, 50)[-1]
+    average_true_reward = running_average(total_true_reward_per_episode, 50)[-1]
     average_collisions = running_average(total_collisions_per_episode, 50)[-1]
     average_t = running_average(total_t, 50)[-1]
     EPISODES.set_description(
-        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{average_t}")
+        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{average_t}. True r={average_true_reward}.")
 
     # Plot current trajectory
 
@@ -154,6 +159,6 @@ for episode in EPISODES:
 
 agents.save(filename=save_name)
 
-plot_rewards(total_reward_per_episode,total_collisions_per_episode, n_ep_running_average=50)
+plot_rewards(total_reward_per_episode, total_true_reward_per_episode, total_collisions_per_episode, n_ep_running_average=50)
 # plt.savefig("images/reward_training.pdf",format='pdf', bbox_inches='tight')
 # plot_grads(grad_per_episode,gi_per_episode)
