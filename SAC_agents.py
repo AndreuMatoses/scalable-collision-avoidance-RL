@@ -135,16 +135,36 @@ class SA2CAgents:
         self.discount = discount
         self.epochs = epochs
 
+        preload_NN = "models\\final\\cont_n5"
         # Define policy (actor)
-        # self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
-        self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor) for i in range(n_agents)]
-        # self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
-        self.learning_rate_actor = learning_rate_actor
+        if preload_NN is None:
+             # self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
+            # self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor, n_actions=16) for i in range(n_agents)]
+            self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
+            self.learning_rate_actor = learning_rate_actor
 
-        # List of NN that estimate Q (or V if we use advantage)
-        # self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
-        self.criticsNN = [CriticNN(dim_local_state, output_size=1) for i in range(n_agents)]
-        self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
+            # List of NN that estimate Q (or V if we use advantage)
+            # self.criticsNN = [CriticNN(dim_local_state + dim_local_action, output_size=1) for i in range(n_agents)]
+            self.criticsNN = [CriticNN(dim_local_state, output_size=1) for i in range(n_agents)]
+            self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
+        else:
+            try:
+                actors = torch.load(preload_NN + "-A2Cactors.pth")
+                print(f'Loaded actors, n_agents = {len(actors)}, discount = {discount}. Type: {type(actors[0])}')
+            except:
+                print(f'File {preload_NN + "-A2Cactors.pth"} not found!')
+                exit(-1)
+            self.actors = actors
+            self.learning_rate_actor = learning_rate_actor
+            try:
+                criticsNN = torch.load(preload_NN + "-A2Ccritics.pth")
+                print(f'Loaded Critic, n_agents = {len(criticsNN)}, discount = {discount}. Network model[0]: {criticsNN[0]}')
+            except:
+                print(f'File {preload_NN + "-A2Ccritics.pth"} not found!')
+                exit(-1)
+            self.criticsNN = criticsNN
+            self.critic_optimizers = [optim.Adam(self.criticsNN[i].parameters(),lr = learning_rate_critic) for i in range(n_agents)]
+
 
     def forward(self, z_states, N) -> list:
         ''' Function that calculates the actions to take from the z_states list (control law) 

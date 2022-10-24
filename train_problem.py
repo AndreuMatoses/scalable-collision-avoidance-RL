@@ -20,7 +20,6 @@ tex_fonts = {
     "xtick.labelsize": 10,
     "ytick.labelsize": 10
 }
-
 plt.rcParams.update(tex_fonts)
 
 
@@ -29,15 +28,15 @@ n_agents = 5
 deltas = np.ones(n_agents)*1
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
-env.collision_weight = 0.2
+env.collision_weight = 0.2 # old 0.2
 print(env)
 # env.show()
 
 N_Episodes = 1500  
-episodes_to_plot = [1,500,1000,1500]
-save_name = "softmax8"
+episodes_to_plot = [500,1000,1500]
+# episodes_to_plot = [1500]
+save_name = "cont_preloaded"
 
-# T = 8 # Simulate for T seconds (default dt = drone_env.dt = 0.05s) t_iter t=80
 discount_factor = 0.99
 alpha_critic = 10**-3
 alpha_actor = 10**-3
@@ -45,7 +44,6 @@ M = 10 # Epochs, i.e steps of the SDG for the actor-critic NN in PPO variant
 dim_z = env.local_state_space # Dimension of the localized z_state space
 dim_a = env.local_action_space # Dimension of the local action space
 
-### 
 
 # Initialize variables
 total_collisions_per_episode = []
@@ -62,7 +60,7 @@ agents = SA2CAgents(n_agents=env.n_agents, dim_local_state = dim_z, dim_local_ac
 print(f"### Running {type(agents)}, actor: {type(agents.actors[0])} with params: ###")
 print(f"Episodes = {N_Episodes}, max Time iterations = {drone_env.max_time_steps} (T = {drone_env.max_time_steps * drone_env.dt}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, structure of critic NN = {agents.criticsNN[0].input_size}x{agents.criticsNN[0].L1}x{agents.criticsNN[0].L2}x{agents.criticsNN[0].output_size}")
-print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr for actor  = {alpha_actor}, epochs M = {M}")
+print(f"Discount = {discount_factor}, lr for NN critical  = {alpha_critic}, lr for actor  = {alpha_actor}, collision weight b = {env.collision_weight}")
 
 EPISODES = trange(N_Episodes, desc='Episode: ', leave=True)
 for episode in EPISODES:
@@ -82,7 +80,7 @@ for episode in EPISODES:
     t_iter = 0
     finished = False
     while not finished:
-        # Simple gradient controller u_i = -grad_i, assuming Nj = V
+        
         state = env.state
         z_states = env.z_states
         Ni = env.Ni
@@ -91,12 +89,11 @@ for episode in EPISODES:
         # actions = drone_env.gradient_control(state, env)
         # actions = drone_env.proportional_control(state, env)
         actions = agents.forward(z_states, Ni)
-        # actions = agents.forward(z_states, Ni)
 
         # Update environment one time step with the actions
         new_state, new_z, rewards, n_collisions, finished, true_rewards = env.step(actions)
         # EXPERIECE: [z_state, action, reward, next_z, finished]
-        buffers.append(z_states, actions, rewards,new_z, Ni,finished)
+        buffers.append(z_states, actions, rewards, new_z, Ni, finished)
 
         total_episode_reward += np.mean(rewards)
         total_true_episode_reward += np.mean(true_rewards)
@@ -140,12 +137,12 @@ for episode in EPISODES:
     average_collisions = running_average(total_collisions_per_episode, 50)[-1]
     average_t = running_average(total_t, 50)[-1]
     EPISODES.set_description(
-        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{average_t}. True r={average_true_reward}.")
+        f"Episode {episode} - Reward/Collisions/Steps: {total_episode_reward:.1f}/{total_episode_collisions}/{t_iter} - Average: {average_reward:.1f}/{average_collisions:.2f}/{average_t}. True r={average_true_reward:.1f}.")
 
     # Plot current trajectory
 
     if episode+1 in episodes_to_plot:
-        env.plot(trajectory)
+        env.plot(trajectory, episode)
         env.animate(trajectory, z_trajectory, deltas, episode, name=f"training-E{episode+1}", format="mp4")
         times = np.arange(0, t_iter)*drone_env.dt
         plt.figure()
@@ -153,7 +150,8 @@ for episode in EPISODES:
             agent_color = drone_env.num_to_rgb(i,env.n_agents-1)
             plt.plot(times,Q_simulated[i], label=f"i={i}, simulated Q (Gt)", color = agent_color)
             plt.plot(times,V_approx[i],"--" , label=f"i={i}, approx V", color = tuple(0.9*x for x in agent_color))
-            # print(f"Agent {i} params = {agents.actors[i].parameters}")
+            if type(agents.actors[0]) is NormalPolicy:
+                print(f"Agent {i} params = {agents.actors[i].parameters}")
         plt.legend()
         plt.show()
 

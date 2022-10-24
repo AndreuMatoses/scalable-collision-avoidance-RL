@@ -253,8 +253,7 @@ class ExperienceBuffers:
         return len(self.buffers[0])
 
 class DiscreteSoftmaxNN(nn.Module):
-    """ NN for a policy that as input takes the z state and outputs 2D means and sigma of a independent normal distributions
-        In this case: z[1x6] -> mu[1x2], sigma^2[1x2]
+    """ 
         NN for the policy with finite actions, in which the input is the state and the output are softmax probabilities for each of the actions
     """
     def __init__(self, input_size, lr , n_actions = 8):

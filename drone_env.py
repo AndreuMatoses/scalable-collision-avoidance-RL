@@ -284,12 +284,13 @@ class drones:
         n_collisions = np.sum(collisions)
 
         # These are the approximated localized rewards
-        reward_vector = -(to_goal_cost+collision_cost)
+        reward_vector = -np.nan_to_num(to_goal_cost+collision_cost)
+        true_reward_vector = -np.nan_to_num(to_goal_cost+real_collision_cost)
 
         # Calculate localized z states
         z_states, Ni = self.localized_states(state, end_points, N_delta, d_ij)
 
-        return reward_vector, n_collisions, z_states, Ni, real_collision_cost
+        return reward_vector, n_collisions, z_states, Ni, true_reward_vector
 
     def distance_data(self,state,deltas,d_safety):
         '''Return matrix of clipped distances matrix d[ij]
@@ -446,7 +447,7 @@ class drones:
             display.clear_output(wait=True)
             time.sleep(frame_time)
 
-    def plot(self, trajectory):
+    def plot(self, trajectory, episode = None):
 
         # Create trajectory matrices -> time,  [x(t=0), x(t+1), x(t+2)],  | agent
         times = len(trajectory)
@@ -478,6 +479,8 @@ class drones:
         # (or if you have an existing figure)
         # fig = plt.gcf()
         # ax = fig.gca()
+        fig.set_size_inches(4.5, 3.5)
+        fig.tight_layout()
 
         # ax.set_xlim((0, self.grid[0]));
         # ax.set_ylim((0, self.grid[1]));
@@ -502,10 +505,12 @@ class drones:
             total_markers  = len(collisions_xcord)
             # problem when it is 0, markevery=np.floor(total_markers/2))
             ax.plot(collisions_xcord,collisions_ycord,color=agent_color, marker = "v",fillstyle = "none", markevery=2);
+
+        if episode is None:
             ax.set_title(f"{self.n_agents} agents, collisions = {collisions}")
-
-
-        ax.legend()
+        else:
+            ax.set_title(f"Episode {episode+1} , {self.n_agents} agents, collisions = {collisions}")
+        ax.legend(title="Agents")
         plt.show()
     
     def animate(self, trajectory, z_trajectory , deltas, episode, name = "test", format ="gif"):
@@ -558,7 +563,7 @@ class drones:
         def update_objects(t:int):
             states = trajectory[t]
             z_states = z_trajectory[t]
-            ax.set_title(f"Episode {episode} .Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
+            ax.set_title(f"Episode {episode+1} .Deltas = {deltas[0]}. Time = {t*dt:.1f}s")
 
             for i in range(self.n_agents):
                 xi = states[i,0:dim]
@@ -689,10 +694,10 @@ def running_average(x, N = 50):
 def plot_rewards(episode_reward_list, episode_true_reward_list, collision_list, n_ep_running_average=50):
     episodes = [i for i in range(1, len(episode_reward_list)+1)]
     # Plot Rewards and steps
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 9))
-    ax[0].plot(episodes, episode_reward_list, label='Approx. reward', color = "orange", alpha = 0.5)
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(8, 4.5))
+    # ax[0].plot(episodes, episode_reward_list, label='Approx. reward', color = "orange", alpha = 0.5)
     ax[0].plot(episodes, episode_reward_list, label='Global reward', color = "cyan", alpha = 0.5)
-    ax[0].plot(episodes, running_average(episode_reward_list, n_ep_running_average), label='Avg. approx. reward', color="red")
+    # ax[0].plot(episodes, running_average(episode_reward_list, n_ep_running_average), label='Avg. approx. reward', color="red")
     ax[0].plot(episodes, running_average(episode_true_reward_list, n_ep_running_average), label='Avg. global reward', color="blue")
 
     ax[0].set_xlabel('Episodes')
@@ -701,8 +706,8 @@ def plot_rewards(episode_reward_list, episode_true_reward_list, collision_list, 
     ax[0].legend()
     ax[0].grid(alpha=0.3)
 
-    ax[1].plot(episodes,collision_list, label='Collisions per episode', alpha = 0.5)
-    ax[1].plot(episodes, running_average(collision_list, n_ep_running_average), label='Avg. number of collisions per episode')
+    ax[1].plot(episodes,collision_list, label='Collisions per episode', color="cyan", alpha = 0.5)
+    ax[1].plot(episodes, running_average(collision_list, n_ep_running_average), label='Avg. number of collisions per episode',color="blue")
     ax[1].set_xlabel('Episodes')
     ax[1].set_ylabel('Total number of collisions')
     ax[1].set_title('Total number of collisions vs Episodes')
