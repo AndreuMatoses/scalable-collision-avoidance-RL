@@ -1,6 +1,7 @@
 from collections import deque, namedtuple
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import PercentFormatter
 import drone_env
 from drone_env import running_average, plot_rewards, plot_grads
 from tqdm import tqdm, trange
@@ -23,15 +24,16 @@ tex_fonts = {
 plt.rcParams.update(tex_fonts)
 
 ### Set up parameters ###
-n_agents = 5
+model_name = "final\\softmax8_n8"
+n_agents = 8
 deltas = np.ones(n_agents)*1
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 env.collision_weight = 0.2 # old 0.2
 print(env)
 # env.show()
 
-N_Episodes = 50
-episodes_to_plot = [1,50]
+N_Episodes = 1500
+episodes_to_plot = [0]
 
 # Initialize variables
 total_collisions_per_episode = deque()
@@ -42,7 +44,7 @@ mean_advantage = np.zeros([env.n_agents, N_Episodes])
 
 # times = np.arange(0, T, step=drone_env.dt) + drone_env.dt
 
-agents = TrainedAgent(critics_name="final\\cont_n5-A2Ccritics.pth", actors_name="final\\cont_n5-A2Cactors.pth", n_agents=env.n_agents)
+agents = TrainedAgent(critics_name=model_name+"-A2Ccritics.pth", actors_name=model_name+"-A2Cactors.pth", n_agents=env.n_agents)
 print("### Running Trained agent (no learning)")
 print(f"Episodes = {N_Episodes}, max Time iterations = {drone_env.max_time_steps} (T = {drone_env.max_time_steps * drone_env.dt}s, dt = {drone_env.dt}s)")
 print(f"N of agents = {env.n_agents}, collision weight b = {env.collision_weight}")
@@ -141,4 +143,14 @@ plt.xlabel("Episodes")
 plt.ylabel("trajectory 1/T * [Q(s,a)-V(s)] = mean_T A(s,a)")
 plt.legend()
 plt.grid()
+plt.show()
+
+plt.figure()
+# plt.gca().set_size_inches(4.5, 3.5)
+counts, bins, bars = plt.hist(total_collisions_per_episode, range(min(total_collisions_per_episode), max(total_collisions_per_episode) + 1, 2), weights=np.ones(len(total_collisions_per_episode)) / len(total_collisions_per_episode))
+print(f"Runs with 0 coll. = {counts[0]*100:.2f}%. 2 coll. = {counts[1]*100:.2f}%")
+plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
+plt.title("Collision performance")
+plt.xlabel("Number of collisions")
+plt.ylabel("Frequency of Simulations")
 plt.show()

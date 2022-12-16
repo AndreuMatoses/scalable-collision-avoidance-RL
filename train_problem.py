@@ -25,17 +25,17 @@ plt.rcParams.update(tex_fonts)
 
 ### Set up parameters ###
 n_agents = 5
-deltas = np.ones(n_agents)*1
+deltas = np.ones(n_agents)*2.43
 # deltas = None
 env = drone_env.drones(n_agents=n_agents, n_obstacles=0, grid=[5, 5], end_formation="O", deltas=deltas ,simplify_zstate = True)
 env.collision_weight = 0.2 # old 0.2
 print(env)
 # env.show()
 
-N_Episodes = 1500  
-episodes_to_plot = [500,1000,1500]
+N_Episodes = 3000  
+episodes_to_plot = [3000]
 # episodes_to_plot = [1500]
-save_name = "cont_preloaded"
+save_name = "deltas2.5_softmax16"
 
 discount_factor = 0.99
 alpha_critic = 10**-3

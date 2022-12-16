@@ -64,7 +64,7 @@ class TrainedAgent:
                     the parent class Agent
         """
         actions = []
-        if type(self.actors[0]) is NormalPolicy:
+        if type(self.actors[0]) is NormalPolicy or type(self.actors[0]) is NormalActorNN or type(self.actors[0]) is DiscreteSoftmaxNN:
             # z_state in this case
             for i in range(self.n_agents):
                 z_state = z_states[i].flatten()
@@ -135,12 +135,13 @@ class SA2CAgents:
         self.discount = discount
         self.epochs = epochs
 
-        preload_NN = "models\\final\\cont_n5"
+        # preload_NN = "models\\final\\cont_n5"
+        preload_NN = None
         # Define policy (actor)
         if preload_NN is None:
              # self.actors = [NormalPolicy(dim_local_state,dim_local_action) for i in range(n_agents)]
-            # self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor, n_actions=16) for i in range(n_agents)]
-            self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
+            self.actors = [DiscreteSoftmaxNN(dim_local_state, lr = learning_rate_actor, n_actions=16) for i in range(n_agents)]
+            # self.actors = [NormalActorNN(dim_local_state, lr = learning_rate_actor, dim_action=dim_local_action) for i in range(n_agents)]
             self.learning_rate_actor = learning_rate_actor
 
             # List of NN that estimate Q (or V if we use advantage)
