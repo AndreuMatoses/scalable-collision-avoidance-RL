@@ -3,7 +3,7 @@
 
  Multi agent scalable reinforcement learning for formation control with collision avoidance
 
-<img src="https://user-images.githubusercontent.com/46297629/216661630-d4896daa-9ce8-4c72-936e-972fcae30afc.gif" width="450"> <img src="https://user-images.githubusercontent.com/46297629/216676961-4b61d1f0-9b1e-4ca9-ad81-2c36c6a77886.gif" width="450">
+<img src="https://user-images.githubusercontent.com/46297629/216661630-d4896daa-9ce8-4c72-936e-972fcae30afc.gif" width="350"> <img src="https://user-images.githubusercontent.com/46297629/216676961-4b61d1f0-9b1e-4ca9-ad81-2c36c6a77886.gif" width="350">
 
 
  This is part of my Mater's Thesis at the Royal Institute of Technology (KTH), Stockholm, Sweden (URL available soon). The scalable part of this work is inspired by the paper [Scalable Reinforcement Learning for Multi-Agent Networked Systems](https://arxiv.org/abs/1912.02906). The approach presented on the thesis exploits the structure of the designed reward to present ∆-disk local approximation of the individual Q functions and policy gradients. 
