@@ -1,7 +1,7 @@
 # Scalable Collision Avoidance RL
 
 
- Multi agent scalable reinforcement learning for formation control with collision avoidance
+ Multi agent scalable reinforcement learning for formation control with collision avoidance. Paper and more information can be found in the [website 🌍](https://andreumatoses.github.io/research/msc-thesis-marl)
 
 <img src="https://user-images.githubusercontent.com/46297629/216661630-d4896daa-9ce8-4c72-936e-972fcae30afc.gif" width="350"> <img src="https://user-images.githubusercontent.com/46297629/216676961-4b61d1f0-9b1e-4ca9-ad81-2c36c6a77886.gif" width="350">
 
